@@ -140,7 +140,10 @@
       switch (act) {
         case 'local': ui.show('local'); break;
         case 'solo': this.chapterMode = 'solo'; ui.show('chapters'); break;
-        case 'online': ui.show('online'); ui.online.reset(); break;
+        case 'online':
+          ui.show('online'); ui.online.reset();
+          if (!this.net.available()) ui.online.msg('Online play needs the website version of this game (see the README). Here you can play together on one screen, or solo.', 'err');
+          break;
         case 'chapters': this.chapterMode = 'local'; ui.show('chapters'); break;
         case 'chapters-local': this.chapterMode = 'local'; ui.show('chapters'); break;
         case 'album': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('album'); break;
