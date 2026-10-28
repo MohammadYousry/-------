@@ -21,7 +21,7 @@ function serve() {
 }
 
 (async () => {
-  const chapters = process.argv.slice(2).length ? process.argv.slice(2) : ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  const chapters = process.argv.slice(2).length ? process.argv.slice(2) : Array.from({ length: 20 }, (_, i) => String(i + 1));
   const srv = await serve();
   const url = 'http://localhost:' + srv.address().port + '/index.html?debug=1';
   const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });

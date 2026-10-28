@@ -1,5 +1,8 @@
 module.exports = async ({ ev, check, start }) => {
   await start(1);
+  let r0;
+  r0 = await ev(() => ({ m: T.b('mohamed').h, f: T.b('mariem').h, s: T.g.player('mohamed').model.root.scale.x }));
+  check('Kids chapter: both characters are child-sized', r0.m < 1.6 && r0.f < 1.05 && r0.s < 0.85, r0);
   // physics sanity: Mohamed max jump height, Mariem double jump height
   let r = await ev(() => { T.tp('mohamed', 2, 0, 0); let maxY = 0; T.run(1.2, { mohamed: (i, b) => { maxY = Math.max(maxY, b.y); return { jump: i === 0, jumpHeld: true }; } }); return maxY; });
   check('Mohamed jump height ~1.87', r > 1.75 && r < 1.95, r);
@@ -48,9 +51,9 @@ module.exports = async ({ ev, check, start }) => {
   // exam
   r = await ev(() => { T.tp('mohamed', 78, 0, -2.2); T.tp('mariem', 78, 0, 2.2); T.run(0.4, {}); return T.sig('exam'); });
   check('Both PASS plates latch the exam', r === true);
-  r = await ev(() => { T.g.level.counters.notes.n = 3; T.goto('mohamed', 90, 0, 4); T.goto('mariem', 91, 1, 4); T.run(2.2, {}); return { prog: T.g.level.goal.progress, done: T.g.level.goal.done, st: T.g.state }; });
+  r = await ev(() => { T.g.level.counters.stars.n = 3; T.goto('mohamed', 90, 0, 4); T.goto('mariem', 91, 1, 4); T.run(2.2, {}); return { prog: T.g.level.goal.progress, done: T.g.level.goal.done, st: T.g.state }; });
   check('Goal completes with both in the heart zone', r.done, r);
   // collectibles reachable: notes positions
-  r = await ev(() => { const L = T.g.level; return L.items.filter(i => i.kind === 'note').map(i => [i.x, i.y, i.z]); });
-  check('3 notes placed', r.length === 3, r);
+  r = await ev(() => { const L = T.g.level; return L.items.filter(i => i.kind === 'goldstar').map(i => [i.x, i.y, i.z]); });
+  check('3 gold stars placed', r.length === 3, r);
 };

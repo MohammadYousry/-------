@@ -17,7 +17,8 @@
       this.camSt = [{ pos: new T.Vector3(0, 6, 12), look: new T.Vector3() }, { pos: new T.Vector3(0, 6, 12), look: new T.Vector3() }];
       this.fx = new G.Particles(this.scene);
       this.net = MM.Net; this.ui = MM.UI;
-      this.players = []; this.level = null; this.drive = null; this.menu = null;
+      this.players = []; this.level = null; this.drive = null; this.concert = null; this.menu = null;
+      this.kids = []; this.cut = null;
       this.state = 'boot'; this.mode = null; this.chapter = null;
       this.onlineChar = 'mohamed'; this.chapterMode = 'local'; this.lobbyCh = 1; this.myChar = 'mohamed';
       this.active = 0; this.shakeAmt = 0; this.acc = 0; this.netT = 0; this.hudT = 0; this.t = 0;
@@ -43,7 +44,9 @@
     resize() { this.renderer.setSize(window.innerWidth, window.innerHeight, false); this.renderer.domElement.style.width = '100%'; this.renderer.domElement.style.height = '100%'; }
 
     ownsCrates() { return this.mode !== 'online' || this.myChar === 'mohamed'; }
-    split() { return this.mode === 'local' && MM.save.settings.camera !== 'shared' && this.state !== 'cinematic' && !this.drive; }
+    // the drive and the concert are full-screen mini-games with their own camera
+    get mini() { return this.drive || this.concert; }
+    split() { return this.mode === 'local' && MM.save.settings.camera !== 'shared' && this.state !== 'cinematic' && !this.mini && !this.cut; }
     player(who) { return this.players.find((p) => p.who === who); }
 
     /* ================= boot / menus ================= */
@@ -61,6 +64,9 @@
     clearStage() {
       if (this.level) { this.level.dispose(); this.level = null; }
       if (this.drive) { this.drive.dispose(); this.drive = null; }
+      if (this.concert) { this.concert.dispose(); this.concert = null; }
+      this.kids.forEach((k) => this.scene.remove(k.m.root)); this.kids = [];
+      this.cut = null; this.ui.cinemaText(null);
       if (this.menu) { this.scene.remove(this.menu.group); this.scene.remove(this.menu.sky); this.menu = null; }
       this.players.forEach((p) => p.removeFrom(this.scene));
       this.players = [];
@@ -117,7 +123,7 @@
       cam.position.set(Math.sin(a) * R, 4.6 + Math.sin(m.t * 0.3) * 0.4, Math.cos(a) * R);
       cam.lookAt(0, 1.3, 0);
       const w = window.innerWidth, h = window.innerHeight;
-      if (m.ending) cam.setViewOffset(w, h, 0, h * 0.16, w, h);
+      if (m.ending) cam.setViewOffset(w, h, 0, h * 0.3, w, h);
       else if (w / h > 1.15) cam.setViewOffset(w, h, -w * 0.2, 0, w, h); else cam.clearViewOffset();
       m.group.children.forEach((c) => { if (c.userData.cloud) c.position.y += Math.sin(m.t + c.position.x) * 0.002; });
       m.nextAct -= dt;
@@ -148,6 +154,7 @@
         case 'chapters-local': this.chapterMode = 'local'; ui.show('chapters'); break;
         case 'album': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('album'); break;
         case 'howto': ui.show('howto'); break;
+        case 'timeline': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('timeline'); break;
         case 'settings': ui.show('settings'); break;
         case 'back': if (ui.current() === 'online') { this.net.close(); ui.online.reset(); } ui.back(); break;
         case 'start-local': this.startGame('local', this.firstUnfinished()); break;
@@ -222,14 +229,18 @@
         this.active = 0;
         this.storyT = 0;
         this.cine = null;
-        const o = MM.save.settings.outfit;
+        const o = Object.assign({}, MM.save.settings.outfit, def.outfit || {});
         if (def.type === 'drive') {
           this.drive = new MM.Drive(this, def);
           this.drive.camera(this.cams[0], 0, true);
+        } else if (def.type === 'concert') {
+          this.concert = new MM.Concert(this, def);
+          this.concert.camera(this.cams[0], 0, true);
         } else {
           this.level = new MM.Level(this, def);
           ['mohamed', 'mariem'].forEach((w) => {
-            const p = new MM.Player(this, w, o[w]);
+            const p = new MM.Player(this, w, o[w], { scale: def.scale });
+            if (def.umbrella && w === 'mohamed') p.umbrella = true;
             p.local = this.mode !== 'online' || w === this.myChar;
             p.addTo(this.scene, this.level);
             p.place(this.level.respawnPoint(w));
@@ -238,10 +249,11 @@
           });
           if (this.mode === 'solo') this.active = 0;
           if (this.mode === 'local') { const p1 = MM.save.lastLocal.p1; this.players.sort((a, b) => (a.who === p1 ? -1 : b.who === p1 ? 1 : 0)); }
+          if (def.kids) this.spawnKids();
         }
         MM.Audio.playMusic(def.music);
         this.state = 'story';
-        const roles = def.type === 'drive' ? { mohamed: 'drives', mariem: 'radio' } : null;
+        const roles = def.type === 'drive' ? { mohamed: 'drives', mariem: 'radio' } : def.type === 'concert' ? { mohamed: 'blue notes', mariem: 'pink notes' } : null;
         this.ui.story(def, this.mode, roles);
         this.ui.fade(false);
         I.capture = true;
@@ -279,7 +291,9 @@
       this.ui.touch(I.isTouch() && this.mode !== 'local', this.mode === 'solo');
       this.updateChips();
       this.blur();
-      if (this.drive) { this.drive.running = true; this.ui.driveHud(this.drive); } else { this.ui.meter(null); this.ui.counterChip(null); document.getElementById('hud-counter').style.color = ''; }
+      if (this.drive) { this.drive.running = true; this.ui.driveHud(this.drive); }
+      else { this.ui.meter(null); this.ui.counterChip(null); document.getElementById('hud-counter').style.color = ''; }
+      if (this.concert) { this.concert.running = true; this.ui.counts(null); }
       this.snapCams();
       MM.Audio.resumeCustom();
     }
@@ -409,6 +423,153 @@
       return true;
     }
 
+    // Seesaw and similar launches: if the launched player lives on the other device, tell it.
+    launch(q, vy, fx, fz) {
+      if (q.local) q.receiveToss(fx, fz, vy);
+      else this.net.sendEv({ e: 'launch', vy, fx, fz });
+    }
+    photoFlash() {
+      const f = document.getElementById('flash');
+      if (f) { f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
+      MM.Audio.sfx('shutter');
+    }
+
+    // A short scripted moment inside a chapter: players freeze, the camera circles, lines play.
+    cutscene(o) {
+      if (this.cut || this.state !== 'play') return;
+      const c = (this.cut = Object.assign({ t: 0, dur: 4, said: 0, dist: 6.5, h: 2.6, ang: 0 }, o));
+      if (o.at) c.center = new T.Vector3().fromArray(o.at);
+      else { const [a, b] = this.players; c.center = new T.Vector3((a.body.x + b.body.x) / 2, Math.max(a.body.y, b.body.y), (a.body.z + b.body.z) / 2); }
+      this.players.forEach((p) => { p.body.vx = p.body.vz = 0; });
+      this.ui.divider(false); this.ui.hud(false); this.ui.touch(false);
+      if (o.title) this.ui.cinemaText(o.title, o.sub);
+      if (o.start) o.start(this, c);
+    }
+    updateCut(dt) {
+      const c = this.cut;
+      c.t += dt;
+      const lines = c.lines || [];
+      while (c.said < lines.length && c.t >= lines[c.said][0]) { const ln = lines[c.said++]; this.say(ln[1], ln[2], ln[3]); }
+      if (c.tick) c.tick(c.t, dt, this);
+      const cam = this.cams[0], a = c.ang + c.t * 0.12;
+      cam.position.set(c.center.x + Math.sin(a) * c.dist, c.center.y + c.h, c.center.z + Math.cos(a) * c.dist);
+      cam.lookAt(c.center.x, c.center.y + 1.1, c.center.z);
+      if (c.t >= c.dur) {
+        this.cut = null;
+        this.ui.cinemaText(null);
+        if (c.end) c.end(this);
+        this.ui.divider(this.split()); this.ui.hud(true); this.ui.touch(I.isTouch() && this.mode !== 'local', this.mode === 'solo');
+        this.updateCams(0, true);
+      }
+    }
+
+    // Their future kids follow them around in the last chapter.
+    spawnKids() {
+      this.kids = [['girl', 'mariem', 1], ['boy', 'mohamed', -1]].map(([k, follow, side]) => {
+        const m = MM.Characters.create(k);
+        const p = this.player(follow);
+        m.root.position.set(p.body.x - 1.2, p.body.y, p.body.z + side * 0.9);
+        m.root.traverse((q) => { if (q.isMesh) q.castShadow = true; });
+        this.scene.add(m.root);
+        return { m, follow, side, hop: 0 };
+      });
+    }
+    updateKids(dt) {
+      this.kids.forEach((k) => {
+        const p = this.player(k.follow), r = k.m.root;
+        if (!p) return;
+        const tx = p.body.x - 1.3, tz = p.body.z + k.side * 0.8;
+        const dx = tx - r.position.x, dz = tz - r.position.z, d = Math.hypot(dx, dz);
+        let sp = 0;
+        if (d > 9) { r.position.set(tx, p.body.y, tz); }
+        else if (d > 0.35) { sp = Math.min(6.5, d * 3); r.position.x += (dx / d) * sp * dt; r.position.z += (dz / d) * sp * dt; r.rotation.y = MM.angleDamp(r.rotation.y, Math.atan2(dx, dz), 10, dt); }
+        else r.rotation.y = MM.angleDamp(r.rotation.y, p.yaw, 4, dt);
+        const gy = p.body.grounded ? p.body.y : r.position.y;
+        r.position.y = MM.damp(r.position.y, gy, 8, dt);
+        k.m.update(dt, { speed: sp, maxSpeed: 4, grounded: true });
+      });
+    }
+
+    // End-of-chapter moments. Each chapter names its finale in levels.js.
+    finale(f, cine) {
+      const mo = this.player('mohamed'), ma = this.player('mariem');
+      const face = (p, q) => { p.yaw = Math.atan2(q.body.x - p.body.x, q.body.z - p.body.z); };
+      const stage = () => {
+        if (!f.at) return;
+        const [x, y, z] = f.at, gap = f.gap || 1.4;
+        mo.place(new T.Vector3(x - gap / 2, y, z)); ma.place(new T.Vector3(x + gap / 2, y, z));
+        cine.center.set(x, y, z);
+      };
+      const lines = f.lines || [];
+      let said = 0;
+      const sayLines = (t) => { while (said < lines.length && t >= lines[said][0]) { const ln = lines[said++]; this.say(ln[1], ln[2], ln[3]); } };
+      cine.dur = f.dur || (lines.length ? Math.max(4, lines[lines.length - 1][0] + 2.6) : 4);
+      if (f.title) this.ui.cinemaText(f.title, f.sub);
+      const kind = f.kind || 'celebrate';
+      if (kind === 'kneel') {
+        stage(); face(mo, ma); face(ma, mo);
+        mo.pose = null; mo.model.play('kneel', 99); ma.model.play('shy', 99);
+        const ring = MM.Props.collectible('ring'); ring.scale.setScalar(0.9);
+        ring.position.set(mo.body.x + Math.sin(mo.yaw) * 0.6, mo.body.y + 1.0, mo.body.z + Math.cos(mo.yaw) * 0.6);
+        this.scene.add(ring); cine.extra = [ring];
+        cine.tick = (t, dt) => {
+          ring.rotation.y += dt * 2; sayLines(t);
+          if (t > (f.yesAt || 3.6) && !cine.s2) { cine.s2 = 1; mo.model.play('celebrate', 3); ma.model.play('celebrate', 3); this.fireworks(new T.Vector3(cine.center.x, cine.center.y + 9, cine.center.z - 14), 6); this.fx.emit('hearts', cine.center.clone().add(new T.Vector3(0, 2, 0)), { n: 24 }); }
+        };
+      } else if (kind === 'cap') {
+        stage();
+        ma.model.play('celebrate', 4); mo.model.play('celebrate', 4);
+        const cap = MM.Props.gradCap(); cap.position.set(ma.body.x, ma.body.y + 1.4, ma.body.z); this.scene.add(cap); cine.extra = [cap];
+        let vy = 9;
+        cine.tick = (t, dt) => { vy -= 12 * dt; cap.position.y = Math.max(ma.body.y + 1.35, cap.position.y + vy * dt); cap.rotation.y += dt * 6; cap.rotation.x += dt * 3; sayLines(t); if (t > 0.3 && !cine.s1) { cine.s1 = 1; this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 3, 0)), { n: 100, w: 8 }); } };
+      } else if (kind === 'kids') {
+        stage(); face(mo, ma); face(ma, mo); mo.model.play('hug', 99); ma.model.play('hug', 99);
+        let girl, boy;
+        if (this.kids.length) { girl = this.kids[0].m; boy = this.kids[1].m; this.kids = []; }
+        else { girl = MM.Characters.create('girl'); boy = MM.Characters.create('boy'); this.scene.add(girl.root); this.scene.add(boy.root); }
+        const start = cine.center.clone().add(new T.Vector3(-7, 0, 0));
+        girl.root.position.copy(start).add(new T.Vector3(0, 0, -0.8)); boy.root.position.copy(start).add(new T.Vector3(-0.6, 0, 0.8));
+        girl.root.rotation.y = boy.root.rotation.y = Math.PI / 2;
+        cine.extra = [girl.root, boy.root];
+        cine.tick = (t, dt) => {
+          [girl, boy].forEach((k, i) => {
+            const target = cine.center.x - 1.4 - i * 0.5;
+            const moving = k.root.position.x < target;
+            if (moving) k.root.position.x += dt * 3.2;
+            k.update(dt, { speed: moving ? 3.2 : 0, maxSpeed: 4, grounded: true });
+            if (!moving && !k.done) { k.done = true; k.play('celebrate', 3); }
+          });
+          sayLines(t);
+          if (t > 3 && !cine.s2) { cine.s2 = 1; mo.model.play('celebrate', 4); ma.model.play('celebrate', 4); this.fireworks(cine.center.clone().add(new T.Vector3(0, 8, -8)), 7); this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 3, 0)), { n: 120, w: 10 }); }
+        };
+      } else if (kind === 'pose') {
+        // seat her on the side his arm reaches toward (the arm points along the model's local +x)
+        if (f.at && !f.place) {
+          const [x, y, z] = f.at, g2 = (f.gap || 0.9) / 2, ax = Math.cos(f.yaw || 0), az = -Math.sin(f.yaw || 0);
+          mo.place(new T.Vector3(x - ax * g2, y, z - az * g2)); ma.place(new T.Vector3(x + ax * g2, y, z + az * g2));
+          cine.center.set(x, y, z);
+        }
+        mo.pose = f.poses.mohamed; ma.pose = f.poses.mariem;
+        mo.yaw = ma.yaw = f.yaw || 0;
+        if (f.place) { mo.place(new T.Vector3().fromArray(f.place.mohamed)); ma.place(new T.Vector3().fromArray(f.place.mariem)); }
+        this.fx.emit('hearts', cine.center.clone().add(new T.Vector3(0, 2, 0)), { n: 14 });
+        cine.tick = (t) => { sayLines(t); if (f.fireworks && t > 1.5 && !cine.s1) { cine.s1 = 1; this.fireworks(cine.center.clone().add(new T.Vector3(0, 8, -10)), 5); } };
+      } else if (kind === 'hug' || kind === 'pray' || kind === 'kiss') {
+        stage(); face(mo, ma); face(ma, mo);
+        const act = kind === 'pray' ? null : kind;
+        if (kind === 'pray') { mo.yaw = ma.yaw = f.yaw || 0; mo.pose = ma.pose = 'pray'; }
+        else { mo.model.play(act, 99); ma.model.play(act, 99); }
+        this.fx.emit('hearts', cine.center.clone().add(new T.Vector3(0, 2, 0)), { n: 18 });
+        cine.tick = (t) => { sayLines(t); if (t > 1.6 && !cine.s1) { cine.s1 = 1; this.fx.emit('hearts', cine.center.clone().add(new T.Vector3(0, 2.2, 0)), { n: 14 }); if (f.fireworks) this.fireworks(cine.center.clone().add(new T.Vector3(0, 8, -8)), 4); } };
+      } else {
+        stage();
+        mo.model.play('celebrate', 3); ma.model.play('celebrate', 3);
+        this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 3, 0)), { n: 90, w: 7 });
+        if (f.fireworks) this.fireworks(cine.center.clone().add(new T.Vector3(0, 7, -6)), 4);
+        cine.tick = (t) => sayLines(t);
+      }
+    }
+
     onGoal(skip) {
       if (this.state !== 'play' && !skip) return;
       if (this.mode === 'online' && this.net.role !== 'host') { this.net.send({ t: 'goalReq' }); return; }
@@ -427,59 +588,18 @@
       this.ui.clearSubs();
       if (this.level && this.level.goal) this.level.goal.grp.visible = false;
       const cine = (this.cine = { t: 0, dur: 4, center: new T.Vector3() });
-      if (this.drive) {
-        cine.center.set(this.drive.x, 1, this.drive.z);
-        this.drive.mo.play('celebrate', 3); this.drive.ma.play('celebrate', 3);
+      if (this.mini) {
+        const M = this.mini;
+        if (this.drive) cine.center.set(this.drive.x, 1, this.drive.z); else cine.center.set(0, 1, 2.6);
+        M.mo.play('celebrate', 3); M.ma.play('celebrate', 3);
         this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 2, -2)), { n: 90, w: 8 });
-        if (def.memoryOnFinish) { MM.unlockMemory(def.memoryOnFinish); const m = MM.MEMORIES.find((q) => q.id === def.memoryOnFinish); if (m) this.ui.toast(m.title, m.text, false, true); }
+        if (this.concert) this.fireworks(new T.Vector3(0, 9, -10), 5);
+        [].concat(def.memoryOnFinish || []).forEach((id) => { MM.unlockMemory(id); const m = MM.MEMORIES.find((q) => q.id === id); if (m) this.ui.toast(m.title, m.text, false, true); });
       } else {
         const [a, b] = this.players;
         a.frozen = b.frozen = true;
         cine.center.set((a.body.x + b.body.x) / 2, Math.max(a.body.y, b.body.y), (a.body.z + b.body.z) / 2);
-        const mo = this.player('mohamed'), ma = this.player('mariem');
-        const face = (p, q) => { p.yaw = Math.atan2(q.body.x - p.body.x, q.body.z - p.body.z); };
-        if (def.id === 'nile') {
-          cine.dur = 7.5;
-          // stage the proposal beside the table, with the river behind them
-          mo.place(new T.Vector3(55.3, 4.3, 2.1)); ma.place(new T.Vector3(56.7, 4.3, 2.1));
-          cine.center.set(56, 4.3, 2.1);
-          face(mo, ma); face(ma, mo);
-          mo.pose = null; mo.model.play('kneel', 99);
-          ma.model.play('love', 99);
-          const ring = MM.Props.collectible('ring'); ring.scale.setScalar(0.9);
-          ring.position.set(mo.body.x + Math.sin(mo.yaw) * 0.6, mo.body.y + 1.0, mo.body.z + Math.cos(mo.yaw) * 0.6);
-          this.scene.add(ring); cine.extra = [ring];
-          cine.tick = (t, dt) => { ring.rotation.y += dt * 2; if (t > 1.2 && !cine.s1) { cine.s1 = 1; this.say('mohamed', 'Mariem... will you marry me?', 2.6); } if (t > 3.6 && !cine.s2) { cine.s2 = 1; this.say('mariem', 'YES! Yes, yes, yes!', 2.4); mo.model.play('celebrate', 3); ma.model.play('celebrate', 3); this.fireworks(new T.Vector3(cine.center.x, cine.center.y + 9, cine.center.z - 14), 6); this.fx.emit('hearts', cine.center.clone().add(new T.Vector3(0, 2, 0)), { n: 24 }); } };
-        } else if (def.id === 'med') {
-          cine.dur = 5;
-          ma.model.play('celebrate', 4); mo.model.play('celebrate', 4);
-          const cap = MM.Props.gradCap(); cap.position.set(ma.body.x, ma.body.y + 1.4, ma.body.z); this.scene.add(cap); cine.extra = [cap];
-          let vy = 9;
-          cine.tick = (t, dt) => { vy -= 12 * dt; cap.position.y = Math.max(ma.body.y + 1.35, cap.position.y + vy * dt); cap.rotation.y += dt * 6; cap.rotation.x += dt * 3; if (t > 0.3 && !cine.s1) { cine.s1 = 1; this.say('mohamed', 'DR. MARIEM! That\'s my fiancée!', 2.6); this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 3, 0)), { n: 100, w: 8 }); } };
-        } else if (def.id === 'forever') {
-          cine.dur = 7.5;
-          face(mo, ma); face(ma, mo); mo.model.play('hug', 99); ma.model.play('hug', 99);
-          const girl = MM.Characters.create('girl'), boy = MM.Characters.create('boy');
-          const start = cine.center.clone().add(new T.Vector3(-7, 0, 0));
-          girl.root.position.copy(start).add(new T.Vector3(0, 0, -0.8)); boy.root.position.copy(start).add(new T.Vector3(-0.6, 0, 0.8));
-          girl.root.rotation.y = boy.root.rotation.y = Math.PI / 2;
-          this.scene.add(girl.root); this.scene.add(boy.root); cine.extra = [girl.root, boy.root];
-          cine.tick = (t, dt) => {
-            [girl, boy].forEach((k, i) => {
-              const target = cine.center.x - 1.4 - i * 0.5;
-              const moving = k.root.position.x < target;
-              if (moving) k.root.position.x += dt * 3.2;
-              k.update(dt, { speed: moving ? 3.2 : 0, maxSpeed: 4, grounded: true });
-              if (!moving && !k.done) { k.done = true; k.play('celebrate', 3); }
-            });
-            if (t > 0.8 && !cine.s1) { cine.s1 = 1; this.say('mariem', 'Look who\'s here!', 2.2); }
-            if (t > 3 && !cine.s2) { cine.s2 = 1; mo.model.play('celebrate', 4); ma.model.play('celebrate', 4); this.fireworks(cine.center.clone().add(new T.Vector3(0, 8, -8)), 7); this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 3, 0)), { n: 120, w: 10 }); this.say('mohamed', 'Our family. Our forever.', 2.6); }
-          };
-        } else {
-          mo.model.play('celebrate', 3); ma.model.play('celebrate', 3);
-          this.fx.emit('confetti', cine.center.clone().add(new T.Vector3(0, 3, 0)), { n: 90, w: 7 });
-          if (def.id === 'agency') this.fireworks(cine.center.clone().add(new T.Vector3(0, 7, -6)), 4);
-        }
+        this.finale(def.finale || {}, cine);
       }
       // save progress
       const rec = MM.save.chapters[def.id] || {};
@@ -494,9 +614,10 @@
       const def = this.chapter, c = this.cine;
       if (c && c.extra) c.extra.forEach((o) => this.scene.remove(o));
       this.cine = null;
+      this.ui.cinemaText(null);
       this.state = 'complete';
       const L = this.level;
-      const hearts = L ? L.items.filter((i) => i.kind === 'heart' && i.taken).length + ' / ' + L.heartsTotal : (this.drive ? this.drive.notesHit + ' notes' : '-');
+      const hearts = L ? L.items.filter((i) => i.kind === 'heart' && i.taken).length + ' / ' + L.heartsTotal : this.drive ? this.drive.notesHit + ' notes' : this.concert ? this.concert.total().pct + '% on beat' : '-';
       const mems = L ? L.items.filter((i) => i.kind === 'memory' && i.taken).length + ' / ' + L.memTotal : '1 / 1';
       const host = this.mode !== 'online' || this.net.role === 'host';
       this.ui.complete(def, { hearts, mems, time: this.chapterTime }, host, host ? '' : 'Waiting for your partner to continue…');
@@ -575,6 +696,10 @@
         case 'dhit': if (D) D.hitObstacle(d.i, true); break;
         case 'dnote': if (D) D.takeNote(d.i, true); break;
         case 'dfail': if (D && !this.ownsCrates()) D.fail(); break;
+        case 'photo': if (L) L.takePhoto(d.id, true); break;
+        case 'launch': { const me = this.player(this.myChar); if (me && me.local) me.receiveToss(d.fx, d.fz, d.vy); break; }
+        case 'clove': if (this.concert) this.concert.loveIn(d.w, true); break;
+        case 'rh': if (this.concert) this.concert.remote(d.w, d.j); break;
         default: break;
       }
     }
@@ -625,7 +750,7 @@
         const c = this.cine;
         c.t += dt;
         if (c.tick) c.tick(c.t, dt);
-        if (this.drive) this.drive.update(dt, {}); else this.visuals(dt);
+        if (this.mini) this.mini.update(dt, {}); else this.visuals(dt);
         this.cinematicCam(dt);
         if (c.t >= c.dur) this.finishCinematic();
         return;
@@ -643,7 +768,7 @@
       if (this.mode === 'solo') {
         const a = this.players[this.active];
         const inp = I.get('any');
-        if (this.drive) { out.mohamed = inp; out.mariem = inp; }
+        if (this.mini) { out.mohamed = inp; out.mariem = inp; }
         else if (a) out[a.who] = inp;
       } else if (this.mode === 'local') {
         const p1 = MM.save.lastLocal.p1;
@@ -655,17 +780,17 @@
     }
 
     simulate(dt, menuOpen) {
-      const inp = menuOpen ? { mohamed: null, mariem: null } : this.inputs();
-      if (this.drive) {
-        this.drive.update(dt, inp);
-        this.drive.camera(this.cams[0], dt, false);
+      const inp = menuOpen || this.cut ? { mohamed: null, mariem: null } : this.inputs();
+      if (this.mini) {
+        this.mini.update(dt, inp);
+        this.mini.camera(this.cams[0], dt, false);
         this.netT -= dt; if (this.netT <= 0) { this.netT = 0.05; this.sendState(); }
-        this.hudT -= dt; if (this.hudT <= 0) { this.hudT = 0.15; this.updateHud(); this.ui.driveHud(this.drive); }
+        this.hudT -= dt; if (this.hudT <= 0) { this.hudT = 0.15; this.updateHud(); if (this.drive) this.ui.driveHud(this.drive); }
         return;
       }
       const L = this.level;
       // solo helpers
-      if (this.mode === 'solo' && !menuOpen) {
+      if (this.mode === 'solo' && !menuOpen && !this.cut) {
         const a = I.get('any');
         if (a.swap) { this.active = 1 - this.active; const p = this.players[this.active]; MM.Audio.sfx('switch'); this.fx.emit('sparkle', p.headPos(), { n: 10, color: p.S.hex }); this.updateChips(); }
         if (a.call) this.callPartner();
@@ -683,7 +808,7 @@
       if (n >= 8) this.acc = 0;
       this.players.forEach((p) => { if (!p.local) p.remoteUpdate(dt); });
       this.visuals(dt);
-      this.updateCams(dt);
+      if (this.cut) this.updateCut(dt); else this.updateCams(dt);
       this.netT -= dt; if (this.netT <= 0) { this.netT = 0.05; this.sendState(); }
       this.hudT -= dt; if (this.hudT <= 0) { this.hudT = 0.15; this.updateHud(); }
       if (MM.DEBUG && I.down.KeyN && !this._dbgN) { this._dbgN = true; this.onGoal(true); }
@@ -695,6 +820,7 @@
       if (!L) return;
       L.frame(dt);
       this.players.forEach((p) => p.visual(dt, L.solids, this.state !== 'cinematic'));
+      if (this.kids.length) this.updateKids(dt);
       if (this.players.length) {
         const a = this.players[0].body, b = this.players[1].body;
         const f = this.mode === 'online' ? this.player(this.myChar).body : this.mode === 'solo' ? this.players[this.active].body : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 };
@@ -702,7 +828,7 @@
       }
       // together ring
       const g = L.goal;
-      if (g && this.state === 'play') {
+      if (g && this.state === 'play' && !this.cut) {
         const show = g.anyInside || g.progress > 0;
         const text = !g.reqOk ? g.reqText : g.progress > 0 ? 'Together…' : 'Waiting for your partner';
         this.ui.together(g.progress, show, text);
@@ -714,6 +840,7 @@
       const D = this.drive;
       const hint = (who) => {
         if (D) return who === 'mohamed' ? 'Left/right: steer · Jump: hop' : 'Left/right or Power: radio';
+        if (this.concert) return 'Love: kiss · then left/right to the beat';
         return MM.CHARS[who].powerHint;
       };
       let list;
@@ -721,8 +848,9 @@
         const p1 = MM.save.lastLocal.p1;
         list = [{ who: p1, label: 'P1', hint: hint(p1) }, { who: other(p1), label: 'P2', hint: hint(other(p1)) }];
       } else if (this.mode === 'solo') {
-        const act = D ? null : this.players[this.active] && this.players[this.active].who;
-        list = D ? [{ who: 'mohamed', label: 'you', hint: 'Arrows: steer · Jump: hop' }, { who: 'mariem', label: 'you', hint: 'Power: change station' }]
+        const act = D || this.concert ? null : this.players[this.active] && this.players[this.active].who;
+        list = this.concert ? [{ who: 'mohamed', label: 'you', hint: 'Left/right to the beat' }, { who: 'mariem', label: 'you', hint: 'Both colours are yours' }]
+          : D ? [{ who: 'mohamed', label: 'you', hint: 'Arrows: steer · Jump: hop' }, { who: 'mariem', label: 'you', hint: 'Power: change station' }]
           : ['mohamed', 'mariem'].map((w) => ({ who: w, label: w === act ? 'playing · Tab to switch' : 'C: call over', hint: hint(w), active: w === act }));
       } else {
         list = [{ who: this.myChar, label: 'you', hint: hint(this.myChar), active: true }, { who: other(this.myChar), label: 'partner', hint: hint(other(this.myChar)) }];
@@ -733,7 +861,7 @@
     updateHud() {
       const def = this.chapter;
       if (!def) return;
-      const L = this.level, D = this.drive;
+      const L = this.level, D = this.mini;
       const rows = def.objectives.map((o) => {
         if (o.counter && L) {
           const c = L.counters[o.counter];
@@ -751,8 +879,10 @@
         const m = L.items.filter((i) => i.kind === 'memory' && i.taken).length;
         this.ui.counts(h, L.heartsTotal, m, L.memTotal);
         if (def.money && L.counters[def.money]) this.ui.counterChip((def.money === 'revenue' ? 'Revenue ' : 'Savings ') + MM.fmtMoney(L.counters[def.money].n));
+        if (def.warmth) this.ui.meter('Warmth · stay close to her', L.warmth, L.warmth < 0.3 ? 'linear-gradient(90deg,#9fc8ff,#5aa9ff)' : 'linear-gradient(90deg,#ffb36b,#ff6f9c)');
       } else if (D) {
         this.ui.counts(null);
+        if (this.concert) this.ui.meter('Concert', this.concert.progress(), 'linear-gradient(90deg,#5aa9ff,#ff6f9c)');
       }
     }
 
@@ -762,7 +892,7 @@
       return { dist: c.dist || 9.2, height: c.height || 4.9 };
     }
     snapCams() {
-      if (this.drive) { this.drive.camera(this.cams[0], 0, true); return; }
+      if (this.mini) { this.mini.camera(this.cams[0], 0, true); return; }
       this.updateCams(0, true);
     }
     followCam(i, target, vx, dt, snap, aspect, extra) {
@@ -818,6 +948,7 @@
         this.drive.update(dt, {});
         return;
       }
+      if (this.concert) { this.concert.update(dt, {}); this.concert.camera(cam, dt); return; }
       const L = this.level;
       const sx = (this.players[0].body.x + this.players[1].body.x) / 2;
       const gx = L.goal ? (L.goal.zones[0].x0 + L.goal.zones[0].x1) / 2 : sx + 30;
@@ -832,7 +963,7 @@
     cinematicCam(dt) {
       const c = this.cine;
       const cam = this.cams[0];
-      if (this.drive) { this.drive.camera(cam, dt, false); return; }
+      if (this.mini) { this.mini.camera(cam, dt, false); return; }
       const center = c ? c.center : (this.players.length ? new T.Vector3((this.players[0].body.x + this.players[1].body.x) / 2, this.players[0].body.y, (this.players[0].body.z + this.players[1].body.z) / 2) : new T.Vector3());
       this._orbit = (this._orbit || 0) + dt * 0.25;
       const a = this._orbit;

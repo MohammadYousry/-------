@@ -1,0 +1,25 @@
+module.exports = async ({ ev, check, start }) => {
+  await start(11);
+  const Y = 4.5;
+  let r = await ev(() => { T.tp('mohamed', 4.2, 0, -2.3); T.run(1.2, { mohamed: (i) => ({ jump: i === 0, jumpHeld: true, mz: -1 }) }); T.tp('mariem', 8.8, 0, -2.5); T.run(1.4, { mariem: (i) => ({ jump: i === 0 || i === 22, jumpHeld: true, mz: -1 }) }); return T.g.level.counters.gifts.n; });
+  check('Flowers (table) and sweets (high shelf)', r === 2, r);
+  r = await ev(() => { T.tp('mariem', 14.6, 0.35, 0); T.run(1.5, {}); const alone = T.g.player('mariem').body.y; T.tp('mohamed', 16, 0.35, 0.3); T.tp('mariem', 15, 0.35, -0.6); T.run(3, {}); return { alone, m: T.P('mohamed'), f: T.P('mariem') }; });
+  check('The lift waits for both of them', r.alone < 1 && r.m.y > 4.4 && r.f.y > 4.4, r);
+  r = await ev(() => { T.goto('mohamed', 20, 0, 2); [22.6, 26, 29.4, 33, 36.6].forEach((x) => { T.tp('mariem', x, 4.5, 0.85); T.run(0.25, {}); }); return T.g.level.counters.tea.n; });
+  check('Tea served to all 5', r === 5, r);
+  r = await ev(() => { const blocked = T.goto('mohamed', 47, 0, 3); T.tp('mohamed', 41, 4.5, -1.4); T.tp('mariem', 41, 4.5, 1.8); T.run(0.4, {}); const b = T.sig('blessing'); T.goto('mohamed', 47, 0, 3); T.goto('mariem', 47, 1, 3); return { blocked, b, m: T.P('mohamed') }; });
+  check('JUNE door shut until ASK + SMILE with the tea served', r.blocked.x < 44.2 && r.b && r.m.x > 46, r);
+  r = await ev(() => { T.goto('mohamed', 56, -2.8, 4); T.run(0.3, {}); return T.g.level.items.find(i => i.kind === 'gradcap').taken; });
+  check('His graduation cap on the stage', r);
+  r = await ev(() => { [[66, 1.5], [68, -1.5]].forEach(([x, z]) => { T.tp('mariem', x, 4.5, z); T.run(0.2, {}); }); T.tp('mohamed', 68.5, 4.5, 0); const climb = T.goto('mohamed', 71, 0, 3); T.run(0.3, {}); return { climb, s: T.g.level.counters.savings.n }; });
+  check('Mohamed climbs the 1.4 m step for EGP 1,000', r.climb.y > 5.8 && r.s === 3000, r);
+  r = await ev(() => { T.tp('mohamed', 75.5, 4.5, -0.4); T.tp('mariem', 75.9, 4.5, -0.4); T.run(0.2, { mohamed: { mz: -1, jumpHeld: true } }); T.run(0.05, { mohamed: { ability: true } }); T.goto('mariem', 75.5, -2.8, 2, { autojump: false }); return T.g.level.counters.savings.n; });
+  check('Toss for the high coin', r === 4000, r);
+  r = await ev(() => { [[79, 2], [81, -2]].forEach(([x, z]) => { T.tp('mariem', x, 4.5, z); T.run(0.2, {}); }); T.tp('mohamed', 81.5, 4.5, 0); const hatch = T.goto('mohamed', 86, 0, 2, { autojump: false }); T.tp('mariem', 81.5, 4.5, 0); const f = T.goto('mariem', 87, -2.6, 3, { autojump: false }); T.run(0.3, {}); const open = T.sig('shop'); T.tp('mohamed', 81.5, 4.5, 2.8); const m = T.goto('mohamed', 86, 2.8, 3); T.goto('mariem', 85, 0.4, 2); T.goto('mariem', 86.5, -1.6, 2); return { hatch, f, open, m, s: T.g.level.counters.savings.n }; });
+  check('Only Mariem fits under the bank hatch', r.hatch.x < 83 && r.f.x > 86, r);
+  check('She opens his door from inside; EGP 8,000 saved', r.open && r.m.x > 85 && r.s === 8000, r);
+  r = await ev(() => { T.tp('mohamed', 89, 4.5, 0); T.tp('mariem', 89, 4.5, 1); T.run(1.2, {}); T.goto('mohamed', 94.5, -2.2, 4); T.run(0.3, {}); return { door: T.sig('count:savings'), phone: T.g.level.counters.phone.n }; });
+  check('Phone shop opens with the savings; he buys the iPhone 13 Pro', r.door && r.phone === 1, r);
+  r = await ev(() => { T.goto('mohamed', 104.4, 0, 4); T.goto('mariem', 105.6, 0.4, 4); T.run(2, {}); return T.g.level.goal.done; });
+  check('The Fatiha completes the chapter', r);
+};

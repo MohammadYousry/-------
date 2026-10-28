@@ -31,6 +31,8 @@
       if (!first) {
         this.obstacles.forEach((o) => { o.hit = false; o.mesh.visible = true; o.mesh.position.set(o.x, 0, o.z); o.mesh.rotation.set(0, 0, 0); o.vy = 0; });
         this.notes.forEach((n) => { n.taken = false; n.mesh.visible = true; n.missed = false; });
+        (this.gates || []).forEach((ga) => { ga.done = false; }); this.examsDone = 0;
+        (this.pops || []).forEach((p) => { p.taken = false; p.mesh.visible = true; }); this.popcorn = 0;
       }
     }
 
@@ -49,9 +51,23 @@
       // road
       const road = new T.Mesh(new T.BoxGeometry(9, 0.2, LENGTH + 200), G.mat('#3b3946', { r: 0.9 }));
       road.position.set(0, -0.1, -LENGTH / 2 + 60); road.receiveShadow = true; g.add(road);
+      const corniche = !!this.def.corniche;
       [-1, 1].forEach((s) => {
-        const side = new T.Mesh(new T.BoxGeometry(4, 0.4, LENGTH + 200), G.mat('#e7d8c9', { r: 0.9 }));
+        const side = new T.Mesh(new T.BoxGeometry(4, 0.4, LENGTH + 200), G.mat(corniche && s < 0 ? '#d9dfe8' : '#e7d8c9', { r: 0.9 }));
         side.position.set(s * 6.5, 0, -LENGTH / 2 + 60); side.receiveShadow = true; g.add(side);
+        if (corniche && s < 0) {
+          // the Mediterranean on the left, behind the blue-and-white Corniche railing
+          const sea = new T.Mesh(new T.BoxGeometry(400, 0.2, LENGTH + 400), new T.MeshStandardMaterial({ color: '#3d8fd1', roughness: 0.15, metalness: 0.2 }));
+          sea.position.set(-208.5, -0.6, -LENGTH / 2 + 60); g.add(sea);
+          const rail = new T.InstancedMesh(G.cyl(0.06, 0.06, 1, 6), G.mat('#ffffff'), Math.floor((LENGTH + 200) / 1.5));
+          const m4 = new T.Matrix4();
+          for (let i = 0; i < rail.count; i++) { m4.makeTranslation(-8.4, 0.7, 60 - i * 1.5); rail.setMatrixAt(i, m4); }
+          g.add(rail);
+          const bar = new T.Mesh(new T.BoxGeometry(0.12, 0.1, LENGTH + 200), G.mat('#2f6fb3')); bar.position.set(-8.4, 1.2, -LENGTH / 2 + 60); g.add(bar);
+          const q = MM.Props.qaitbay(); q.position.set(-70, -0.6, -LENGTH * 0.45); q.rotation.y = 0.5; q.scale.setScalar(2); g.add(q);
+          const sb = MM.Props.stanleyBridge(60); sb.position.set(-40, -0.6, -LENGTH * 0.75); sb.rotation.y = 0.25; g.add(sb);
+          return;
+        }
         const grass = new T.Mesh(new T.BoxGeometry(40, 0.3, LENGTH + 200), G.mat('#8cc084', { r: 1 }));
         grass.position.set(s * 28.5, -0.1, -LENGTH / 2 + 60); g.add(grass);
       });
@@ -75,6 +91,7 @@
       for (let i = 0; i < nP; i++) {
         const z = 20 - i * 18;
         [-1, 1].forEach((s) => {
+          if (corniche && s < 0 && (i + 1) % 2 === 0) return;
           if ((i + (s > 0 ? 1 : 0)) % 2 === 0) {
             mtx.makeTranslation(s * 7.4, 2.5, z); trunk.setMatrixAt(pi, mtx);
             mtx.makeTranslation(s * 7.4, 5.3, z); crown.setMatrixAt(pi, mtx); pi++;
@@ -87,6 +104,7 @@
       for (let i = 0; i < nB / 2; i++) {
         const z = 10 - i * 14 - r() * 4;
         [-1, 1].forEach((s) => {
+          if (corniche && s < 0) return;
           const h = 4 + r() * 12, w = 5 + r() * 4, d = 6 + r() * 4;
           mtx.compose(new T.Vector3(s * (14 + w / 2 + r() * 4), h / 2, z), new T.Quaternion(), new T.Vector3(w, h, d));
           bld.setMatrixAt(bi, mtx); bld.setColorAt(bi, cols[Math.floor(r() * cols.length)]); bi++;
@@ -95,17 +113,30 @@
       trunk.count = pi; crown.count = pi; lampP.count = li; lampB.count = li; bld.count = bi;
       [trunk, crown, lampP, lampB, bld].forEach((m) => { m.castShadow = false; g.add(m); });
       // Nile bridge section + finish: home
-      const home = MM.Props.house(); home.position.set(0, 0, -LENGTH - 22); g.add(home);
-      const arch = G.textPlane('Home sweet home', 0.9, { color: '#fff', bg: '#ff6f9c', size: 80, pad: 22 });
+      const fin = this.def.finish === 'faculty' ? MM.Props.facultyGate('Faculty of Medicine', 'Alexandria University') : MM.Props.house();
+      fin.position.set(0, 0, -LENGTH - 22); g.add(fin);
+      const arch = G.textPlane(this.def.finishText || 'Home sweet home', 0.9, { color: '#fff', bg: '#ff6f9c', size: 80, pad: 22 });
       arch.position.set(0, 6.5, -LENGTH - 6); g.add(arch);
       [-4.8, 4.8].forEach((x) => G.mesh(G.cyl(0.2, 0.2, 7, 10), G.mat('#ffffff'), x, 3.5, -LENGTH - 6, g));
-      const startSign = G.textPlane('2026 · our car · our playlist', 0.6, { color: '#3b2340', bg: 'rgba(255,248,240,.95)', size: 70, pad: 18 });
+      // exam gates: one per exam, driven through like a finish line
+      this.gates = [];
+      const nEx = this.def.exams || 0;
+      for (let e = 0; e < nEx; e++) {
+        const z = -80 - e * ((LENGTH - 140) / Math.max(1, nEx - 1));
+        const ga = new T.Group(); ga.position.set(0, 0, z); g.add(ga);
+        [-5.2, 5.2].forEach((x) => G.mesh(G.box(0.4, 5.2, 0.4), G.mat('#ffffff'), x, 2.6, 0, ga));
+        G.mesh(G.box(10.8, 0.9, 0.4), G.mat('#2fb39a'), 0, 5.2, 0, ga);
+        const lb = G.textPlane('Exam ' + (e + 1) + ' of ' + nEx, 0.5, { color: '#fff', size: 70, pad: 8 }); lb.position.set(0, 5.2, 0.22); ga.add(lb);
+        this.gates.push({ z, done: false, n: e + 1, grp: ga });
+      }
+      this.examsDone = 0; this.popcorn = 0;
+      const startSign = G.textPlane(this.def.startSign || '2026 · our car · our playlist', 0.6, { color: '#3b2340', bg: 'rgba(255,248,240,.95)', size: 70, pad: 18 });
       startSign.position.set(-7.5, 3.2, -14); startSign.rotation.y = 0.5; g.add(startSign);
 
       // the car with both of them
-      const car = (this.car = MM.Props.car('#f5f6f8'));
+      const car = (this.car = MM.Props.car(this.def.carColor || '#f5f6f8'));
       g.add(car);
-      const o = MM.save.settings.outfit;
+      const o = Object.assign({}, MM.save.settings.outfit, this.def.outfit || {});
       this.mo = MM.Characters.create('mohamed', o.mohamed); this.ma = MM.Characters.create('mariem', o.mariem);
       // Car model faces +z; the pivot turns it to drive toward -z. Driver sits on the left (Egypt).
       this.mo.root.position.set(0.48, 0.81, -0.1); this.ma.root.position.set(-0.48, 0.91, -0.1);
@@ -161,6 +192,14 @@
         }
       }
       this.notesTotal = this.notes.length;
+      this.pops = [];
+      (this.gates || []).forEach((ga, i) => {
+        const lane = i % 3;
+        for (let j = 0; j < 2; j++) {
+          const m = MM.Props.collectible('popcorn'); m.position.set(LANES[lane], 1.2, ga.z - 10 - j * 3); m.scale.setScalar(1.6); g.add(m);
+          this.pops.push({ z: ga.z - 10 - j * 3, x: LANES[lane], mesh: m, taken: false });
+        }
+      });
     }
 
     setStation(i, fromNet) {
@@ -207,11 +246,13 @@
         if (this.hopT > 0) { this.hopT -= dt; this.y = Math.sin(Math.max(0, this.hopT) / 0.62 * Math.PI) * 1.3; } else this.y = 0;
         this.wobble -= dt;
         this.collide();
+        this.checkGates();
         if (this.z < -LENGTH) this.finish();
         if (this.vibe <= 0) this.fail();
       } else if (!sim && this.net) {
         const n = this.net;
         this.z = MM.damp(this.z, n.z, 12, dt); this.x = MM.damp(this.x, n.x, 12, dt); this.y = n.y; this.vibe = n.vibe;
+        this.checkGates();
         if (n.st !== this.station && this.time - (this.lastLocalStation || -9) > 0.8) this.setStation(n.st, true);
       }
       // visuals
@@ -244,6 +285,22 @@
           if (n.col === this.station) this.takeNote(i); else this.missNote(i);
         }
       }
+    }
+
+    checkGates() {
+      (this.gates || []).forEach((ga) => {
+        if (!ga.done && this.z < ga.z) {
+          ga.done = true; this.examsDone++;
+          MM.Audio.sfx('check');
+          this.game.fx.emit('confetti', new T.Vector3(this.x, 4, ga.z), { n: 40, w: 8 });
+          this.game.ui.toast('', 'Exam ' + ga.n + ' done ✓' + (ga.n === this.gates.length ? '  ·  All ten!' : ''), true);
+          if (ga.n === 1) this.game.say('mohamed', 'One down, nine to go. Cinema after, I promise.', 2.4);
+          if (ga.n === 5) this.game.say('mariem', 'Halfway! Popcorn tonight?', 2);
+        }
+      });
+      (this.pops || []).forEach((p) => {
+        if (!p.taken && Math.abs(p.z - this.z) < 1.8 && Math.abs(p.x - this.x) < 1.4) { p.taken = true; p.mesh.visible = false; this.popcorn++; MM.Audio.sfx('item'); }
+      });
     }
 
     hitObstacle(i, fromNet) {

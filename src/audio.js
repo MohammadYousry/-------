@@ -33,6 +33,17 @@
     med: { bpm: 104, root: 58, scale: 'major', prog: [0, 4, 5, 3], lead: 'bell', arp: 'updown8', bass: true, drums: 'light', seed: 91 },
     forever: { bpm: 100, root: 60, scale: 'major', prog: [0, 3, 4, 0], lead: 'bell', arp: 'up8', pad: true, bass: true, drums: 'zaffa', seed: 101 },
     ending: { bpm: 72, root: 60, scale: 'major', prog: [0, 4, 5, 3], lead: 'bell', arp: 'up8', pad: true, bass: true, seed: 111 },
+    physics: { bpm: 100, root: 62, scale: 'major', prog: [0, 5, 3, 4], lead: 'pluck', arp: 'updown8', pad: true, bass: true, drums: 'soft', seed: 121 },
+    alex: { bpm: 108, root: 64, scale: 'major', prog: [0, 3, 4, 3], lead: 'oud', arp: 'up8', bass: true, drums: 'darbuka', seed: 131 },
+    sharm: { bpm: 88, root: 59, scale: 'minor', prog: [0, 5, 2, 6], lead: 'bell', arp: 'up8', pad: true, bass: true, drums: 'soft', seed: 141 },
+    cairo: { bpm: 112, root: 62, scale: 'hijaz', prog: [0, 3, 4, 0], lead: 'oud', arp: 'drone', pad: true, bass: true, drums: 'zaffa', seed: 151 },
+    family: { bpm: 90, root: 65, scale: 'major', prog: [0, 4, 5, 3], lead: 'keys', arp: 'up8', pad: true, bass: true, drums: 'soft', seed: 161 },
+    garden: { bpm: 84, root: 60, scale: 'major', prog: [0, 5, 3, 4], lead: 'bell', arp: 'up8', pad: true, bass: true, drums: 'darbuka', seed: 171 },
+    yousr: { bpm: 64, root: 57, scale: 'minor', prog: [0, 5, 3, 6], lead: 'bell', arp: 'up8', pad: true, bass: true, seed: 181 },
+    concert1: { bpm: 104, root: 57, scale: 'minor', prog: [0, 5, 6, 4], lead: 'saw', arp: 'up16', pad: true, bass: true, drums: 'pop', seed: 191 },
+    concert2: { bpm: 96, root: 62, scale: 'major', prog: [0, 4, 5, 3], lead: 'oud', arp: 'updown8', pad: true, bass: true, drums: 'darbuka', seed: 201 },
+    summer: { bpm: 116, root: 67, scale: 'major', prog: [0, 4, 5, 3], lead: 'pluck', arp: 'updown8', bass: true, drums: 'pop', seed: 211 },
+    anniversary: { bpm: 74, root: 62, scale: 'hijaz', prog: [0, 3, 0, 4], lead: 'oud', arp: 'drone', pad: true, bass: true, drums: 'darbuka', seed: 221 },
   };
 
   const A = {
@@ -167,10 +178,13 @@
     s.send = ctx.createGain(); s.send.gain.value = 0.5; s.gain.connect(s.send); s.send.connect(A.reverb);
     s.step = 0;
     s.next = ctx.currentTime + 0.12;
+    s.t0 = s.next;
     s.stepDur = 60 / s.def.bpm / 4;
     A.song = s;
   };
   A.stopMusic = function () { A.playMusic(null); };
+  // Time origin of the current song (for rhythm games): step k plays at t0 + k * stepDur.
+  A.songClock = function () { const s = A.song; return s && A.ctx ? { t0: s.t0, stepDur: s.stepDur } : null; };
 
   function tick() {
     const s = A.song;
@@ -364,6 +378,8 @@
       case 'firework': nz(0.5, 0.12, 'highpass', 2000, 500); for (let i = 0; i < 6; i++) nz(0.03, 0.07, 'highpass', 5000, null, null, now + 0.1 + Math.random() * 0.4); break;
       case 'switch': tone('square', 1200, 0.03, 0.05); tone('sine', 600, 0.08, 0.06, now + 0.03); break;
       case 'fail': sweep('triangle', 500, 160, 0.5, 0.12); break;
+      case 'shutter': nz(0.05, 0.25, 'highpass', 3000); tone('square', 1800, 0.03, 0.05, now + 0.06); break;
+      case 'splash': nz(0.4, 0.2, 'bandpass', 900, 300, 0.8); break;
       default: break;
     }
   };

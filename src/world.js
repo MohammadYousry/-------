@@ -40,11 +40,14 @@
       this.spawns = {}; this.goal = null;
       this.time = 0; this.killY = def.killY != null ? def.killY : -12;
       this.anim = []; // per-frame decorative animations
+      this.npcs = []; this.waters = []; this.paints = []; this.photos = [];
+      this.warmth = 1;
       this.heartsTotal = 0; this.memTotal = 0;
       this.rng = MM.rng(def.num * 977 + 13);
       this.M = this.makeMaterials(this.theme);
       this.setupEnvironment();
       def.build(this, MM.Props);
+      if (def.rain) this.makeRain();
       this.computeSignals();
       this.group.traverse((o) => { if (o.isMesh && o.userData.static !== false && !o.userData.dynamic) { o.updateMatrix(); } });
     }
@@ -334,9 +337,10 @@
 
     hazard(x, y, z, o) {
       o = o || {};
-      let mesh;
+      let mesh = o.mesh || null;
       const kind = o.kind || 'cloud';
-      if (kind === 'cloud') {
+      if (mesh) { /* custom look, e.g. a taxi crossing the road */ }
+      else if (kind === 'cloud') {
         mesh = MM.Props.cloud(0.5);
         mesh.traverse((q) => { if (q.isMesh) q.material = G.mat('#6c5d7a', { r: 1 }); });
         const face = G.textPlane('>:(', 0.22, { color: '#ffffff', size: 64, pad: 4 }); face.position.set(0, 0, 0.55); mesh.add(face);
@@ -353,7 +357,7 @@
       }
       mesh.position.set(x, y, z);
       this.add(mesh);
-      const obj = { type: 'hazard', mesh, kind, x, y, z, r: o.r || 0.6, box: kind === 'bar' ? { w: o.w || 0.3, h: o.h || 0.4, d: o.d || 6 } : null, dx: o.dx || 0, dy: o.dy || 0, dz: o.dz || 0, period: o.period || 3, phase: o.phase || 0, pos: new T.Vector3(x, y, z), linear: !!o.linear };
+      const obj = { type: 'hazard', mesh, kind, x, y, z, r: o.r || 0.6, box: o.box || (kind === 'bar' ? { w: o.w || 0.3, h: o.h || 0.4, d: o.d || 6 } : null), dx: o.dx || 0, dy: o.dy || 0, dz: o.dz || 0, period: o.period || 3, phase: o.phase || 0, pos: new T.Vector3(x, y, z), linear: !!o.linear };
       this.hazards.push(obj); this.objects.push(obj);
       return obj;
     }
@@ -429,6 +433,181 @@
 
     talk(x, who, text, o) { this.talks.push(Object.assign({ x, who, text, done: false }, o || {})); }
     trigger(x0, x1, z0, z1, fn, o) { this.triggers.push(Object.assign({ x0, x1, z0, z1, fn, done: false }, o || {})); }
+
+    /* ---- story mechanics ---- */
+
+    // Seesaw (Newton's third law): Mohamed landing on the left end launches Mariem off the right end.
+    seesaw(x, z, y, o) {
+      o = o || {}; y = y || 0;
+      const len = o.len || 6, w = o.w || 1.8, top = y + 0.4;
+      const grp = new T.Group(); grp.position.set(x, y, z);
+      const piv = G.mesh(new T.CylinderGeometry(0.05, 0.45, 0.42, 3), G.mat('#3a2f3f'), 0, 0.2, 0, grp); piv.rotation.x = Math.PI / 2; piv.scale.set(1, w * 0.5, 1);
+      const plank = new T.Group(); plank.position.y = 0.34; grp.add(plank);
+      G.mesh(G.box(len, 0.12, w), G.mat(o.color || '#ffcf6e', { r: 0.5 }), 0, 0, 0, plank);
+      G.mesh(G.box(1.4, 0.13, w + 0.02), G.mat('#5aa9ff'), -len / 2 + 0.75, 0, 0, plank);
+      G.mesh(G.box(1.4, 0.13, w + 0.02), G.mat('#ff6f9c'), len / 2 - 0.75, 0, 0, plank);
+      const lb = G.textPlane(o.label || 'F = m · a', 0.24, { color: '#3b2340', size: 64, pad: 6 }); lb.rotation.x = -Math.PI / 2; lb.position.set(0, 0.07, 0); plank.add(lb);
+      this.add(grp);
+      const solid = this.addSolid(Ph.solid(x - len / 2, x + len / 2, y, top, z - w / 2, z + w / 2));
+      const obj = { type: 'seesaw', x, z, y, top, len, w, solid, plank, tilt: 0, cool: 0, power: o.power || 19 };
+      this.objects.push(obj);
+      return obj;
+    }
+    onLand(p, impact) {
+      for (let i = 0; i < this.objects.length; i++) {
+        const s = this.objects[i];
+        if (s.type !== 'seesaw' || p.body.ground !== s.solid || s.cool > 0) continue;
+        if (p.who !== 'mohamed' || p.body.x > s.x - 0.4 || impact > -6) continue;
+        s.tilt = -1; s.cool = 0.6;
+        MM.Audio.sfx('spring');
+        // the partner may live on the other device, so judge by position rather than by contact
+        const q = p.partner(), qb = q && q.body;
+        const onPlank = qb && qb.x > s.x + 0.4 && qb.x < s.x + s.len / 2 + 0.1 && Math.abs(qb.z - s.z) < s.w / 2 + 0.1 && Math.abs(qb.y - s.top) < 0.25;
+        if (onPlank) { s.tilt = 1; this.game.launch(q, s.power, 0.5, 0); }
+      }
+    }
+
+    // Photo session spot: stand on it together and press Love.
+    photoSpot(id, x, z, y, o) {
+      o = o || {}; y = y || 0;
+      const grp = new T.Group(); grp.position.set(x, y, z);
+      const ring = new T.Mesh(new T.RingGeometry(1.15, 1.3, 40), G.basic('#ffffff', { o: 0.75 }));
+      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; grp.add(ring);
+      [-0.45, 0.45].forEach((dx) => { const h = G.mesh(G.heartGeo(), G.mat('#ff6f9c', { e: '#ff2f6f', ei: 0.4 }), dx, 0.05, 0, grp); h.rotation.x = -Math.PI / 2; h.scale.setScalar(0.32); });
+      const cam = MM.Props.tripod(); cam.position.set(0, 0, 3.2); cam.rotation.y = Math.PI; grp.add(cam);
+      const lb = G.textPlane(o.label || 'Photo · stand here together and press Love', 0.17, { color: '#fff', bg: 'rgba(30,14,40,.82)', size: 56, pad: 10 }); lb.position.set(0, 2.3, 3.2); grp.add(lb);
+      this.add(grp);
+      const obj = { type: 'photo', id, x, z, y, r: 1.4, taken: false, grp, ring };
+      this.photos.push(obj);
+      return obj;
+    }
+    onLove(p) {
+      const players = this.game.players;
+      for (let i = 0; i < this.photos.length; i++) {
+        const ph = this.photos[i];
+        if (ph.taken) continue;
+        const ok = players.length === 2 && players.every((q) => Math.hypot(q.body.x - ph.x, q.body.z - ph.z) < ph.r && Math.abs(q.body.y - ph.y) < 1.2);
+        if (ok) { this.takePhoto(ph.id); return true; }
+      }
+      return false;
+    }
+    takePhoto(id, fromNet) {
+      const ph = this.photos.find((q) => q.id === id);
+      if (!ph || ph.taken) return;
+      ph.taken = true;
+      ph.ring.material = G.basic('#7ee0c3', { o: 0.6 });
+      if (this.counters.photos) this.counters.photos.n++;
+      this.game.photoFlash();
+      this.game.fx.emit('sparkle', new T.Vector3(ph.x, ph.y + 1.5, ph.z), { n: 20 });
+      if (!fromNet) this.game.net.sendEv({ e: 'photo', id });
+    }
+
+    // Family members and friends. They say their line once when someone walks up.
+    npc(name, x, y, z, o) {
+      o = o || {};
+      const look = Object.assign({ name }, o.look || {});
+      const model = MM.Characters.create('npc', null, look);
+      model.root.position.set(x, y || 0, z);
+      model.root.rotation.y = o.ry || 0;
+      this.add(model.root);
+      if (!o.nosolid) this.invisible(x - 0.35, x + 0.35, y || 0, (y || 0) + 1.8, z - 0.35, z + 0.35);
+      const n = { name, model, pose: o.pose || null, line: o.line || null, say: o.say || name, done: false, x, z, r: o.r || 2.8 };
+      this.npcs.push(n);
+      if (n.line) this.talks.push({ x: -1e9, who: n.say, text: n.line, done: false, near: n, dur: o.dur });
+      return n;
+    }
+
+    // Swimmable water: a floor below and a surface you float at.
+    waterZone(x0, x1, z0, z1, surface, floor, o) {
+      o = o || {};
+      const m = new T.Mesh(new T.BoxGeometry(x1 - x0, surface - floor, z1 - z0), new T.MeshStandardMaterial({ color: o.color || '#3fa9d8', transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.1, depthWrite: false }));
+      m.position.set((x0 + x1) / 2, (surface + floor) / 2, (z0 + z1) / 2); m.renderOrder = 3;
+      this.add(m);
+      this.box(x0, x1, floor - 1, floor, z0, z1, { top: G.mat(o.floorColor || '#f2dfb0'), side: G.mat('#d9c08e') });
+      const w = { x0, x1, z0, z1, surface, floor };
+      this.waters.push(w);
+      return w;
+    }
+    waterAt(b) {
+      for (let i = 0; i < this.waters.length; i++) {
+        const w = this.waters[i];
+        if (b.x > w.x0 && b.x < w.x1 && b.z > w.z0 && b.z < w.z1 && b.y < w.surface - 0.35 && b.y > w.floor - 0.5) return w;
+      }
+      return null;
+    }
+
+    // Choose a wall colour together: both stand on the same swatch.
+    paintRoom(room, y, swatches, targets) {
+      const plates = swatches.map((sw, i) => this.plate('paint:' + room + ':' + i, sw.x, sw.z, y, { color: sw.color, icon: ' ', w: 1.5, d: 1.5 }));
+      const pr = { room, plates, swatches, targets: targets || [], done: false, color: null, argueT: 0 };
+      this.paints.push(pr);
+      return pr;
+    }
+    updatePaint(dt) {
+      for (let i = 0; i < this.paints.length; i++) {
+        const pr = this.paints[i];
+        if (pr.done) continue;
+        pr.argueT -= dt;
+        const both = pr.plates.findIndex((pl) => pl.count >= 2);
+        if (both >= 0) {
+          pr.done = true; pr.color = pr.swatches[both].color;
+          this.sig['painted:' + pr.room] = true;
+          if (this.counters.paint) this.counters.paint.n++;
+          const col = new T.Color(pr.color);
+          pr.targets.forEach((m) => { const from = m.color.clone(); let k = 0; this.anim.push((t, d) => { k = Math.min(1, k + d * 1.5); m.color.copy(from).lerp(col, k); return k >= 1; }); });
+          MM.Audio.sfx('item');
+          const pl = pr.plates[both];
+          this.game.fx.emit('confetti', new T.Vector3(pl.x, pl.y + 2, pl.z), { n: 40, w: 3, d: 2 });
+          this.game.say('mariem', 'Perfect. ' + (pr.swatches[both].name || 'This one') + ' it is!', 2);
+        } else {
+          const on = pr.plates.filter((pl) => pl.count === 1);
+          if (on.length === 2 && pr.argueT <= 0) { pr.argueT = 6; this.game.say('mariem', 'No, babe. This one. Come stand on mine!', 2.4); }
+        }
+      }
+    }
+
+    // Rain and the "stay close to her" warmth used in the gentle chapter.
+    makeRain() {
+      const n = 900, pos = new Float32Array(n * 6), r = MM.rng(5);
+      for (let i = 0; i < n; i++) { const x = (r() - 0.5) * 40, y = r() * 18, z = (r() - 0.5) * 24; pos.set([x, y, z, x + 0.05, y - 0.6, z], i * 6); }
+      const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3));
+      const lines = new T.LineSegments(g, new T.LineBasicMaterial({ color: 0xbfd4ff, transparent: true, opacity: 0.45, depthWrite: false }));
+      lines.frustumCulled = false;
+      this.add(lines);
+      this.rain = { lines, pos, n, cx: 0 };
+    }
+    updateRain(dt) {
+      const R = this.rain, p = R.pos, cam = this.game.cams[0].position;
+      for (let i = 0; i < R.n; i++) {
+        const o = i * 6;
+        p[o + 1] -= 22 * dt; p[o + 4] -= 22 * dt;
+        if (p[o + 1] < -1) { const x = cam.x + (Math.random() - 0.5) * 40, z = cam.z - 12 + (Math.random() - 0.5) * 24; p[o] = x; p[o + 2] = z; p[o + 3] = x + 0.05; p[o + 5] = z; p[o + 1] = 16 + Math.random() * 4; p[o + 4] = p[o + 1] - 0.6; }
+      }
+      R.lines.geometry.attributes.position.needsUpdate = true;
+    }
+    updateWarmth(dt) {
+      if (!this.def.warmth || this.sig.apart) { if (this.sig.apart) { this.warmth = Math.max(this.warmth, 0.5); const ma = this.game.player('mariem'); if (ma) ma.speedMul = 1; } return; }
+      const mo = this.game.player('mohamed'), ma = this.game.player('mariem');
+      if (!mo || !ma) return;
+      const d = Math.hypot(mo.body.x - ma.body.x, mo.body.z - ma.body.z) + Math.max(0, Math.abs(mo.body.y - ma.body.y) - 1.5);
+      const near = d < 2.6;
+      this.warmth = MM.clamp(this.warmth + (near ? 0.6 : -0.09) * dt, 0, 1);
+      ma.speedMul = this.warmth <= 0.02 ? 0.55 : 1;
+      if (this.warmth <= 0.02 && !this._coldSaid) { this._coldSaid = true; this.game.say('mariem', 'Don\'t go too far. Stay with me...', 2.6); }
+      if (this.warmth > 0.4) this._coldSaid = false;
+    }
+
+    star(x, y, z, label) {
+      const g = new T.Group(); g.position.set(x, y, z);
+      const s = new T.Sprite(new T.SpriteMaterial({ map: G.tex('sparkle'), color: 0xfff1c4, transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false }));
+      s.scale.setScalar(5); g.add(s);
+      const h = new T.Sprite(new T.SpriteMaterial({ map: G.tex('glow'), color: 0xffe2a0, transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false }));
+      h.scale.setScalar(12); g.add(h);
+      if (label) { const t = G.textPlane(label, 0.7, { color: '#fff4dc', glow: '#ffcf6e', size: 90, pad: 20, font: '"Yellowtail",cursive', weight: 400, fog: false }); t.position.y = -3.4; g.add(t); }
+      this.add(g);
+      this.anim.push((t) => { s.material.rotation = t * 0.3; const k = 1 + Math.sin(t * 2) * 0.12; s.scale.setScalar(5 * k); });
+      return g;
+    }
 
     /* ---------------- runtime ---------------- */
     respawnPoint(who) {
@@ -597,12 +776,13 @@
       for (let i = 0; i < this.objects.length; i++) {
         const o = this.objects[i];
         if (o.type === 'plate') {
-          let pressed = false;
-          for (let k = 0; k < players.length && !pressed; k++) {
+          let pressed = false, count = 0;
+          for (let k = 0; k < players.length; k++) {
             const b = players[k].body;
             if (o.heavy && !b.heavy) continue;
-            if (onPlate(o, b)) pressed = true;
+            if (onPlate(o, b)) { pressed = true; count++; }
           }
+          o.count = count;
           if (!pressed) for (let k = 0; k < this.crates.length && !pressed; k++) {
             const c = this.crates[k];
             if (onPlate(o, c.body, true)) { pressed = true; if (!c.locked) this.lockCrate(c, o); }
@@ -622,6 +802,8 @@
         }
       }
       Object.keys(plateIds).forEach((k) => { this.sig[k] = plateIds[k]; });
+      this.updatePaint(dt);
+      this.updateWarmth(dt);
       this.computeSignals();
 
       // pickups (only local players pick things up; the result is synced)
@@ -666,12 +848,14 @@
       for (let i = 0; i < this.talks.length; i++) {
         const tk = this.talks[i];
         if (tk.done) continue;
-        if (players.some((p) => p.body.x >= tk.x && (!tk.by || tk.by === p.who))) { tk.done = true; this.game.say(tk.who, tk.text, tk.dur); }
+        const hit = tk.near ? players.some((p) => Math.hypot(p.body.x - tk.near.x, p.body.z - tk.near.z) < tk.near.r) : players.some((p) => p.body.x >= tk.x && (!tk.by || tk.by === p.who));
+        if (hit) { tk.done = true; this.game.say(tk.who, tk.text, tk.dur); if (tk.near) tk.near.model.play('wave', 1.2); }
       }
       for (let i = 0; i < this.triggers.length; i++) {
         const tr = this.triggers[i];
         if (tr.done) continue;
-        if (players.some((p) => p.body.x > tr.x0 && p.body.x < tr.x1 && p.body.z > tr.z0 && p.body.z < tr.z1)) { tr.done = true; tr.fn(this, this.game); }
+        const inTr = (p) => p.body.x > tr.x0 && p.body.x < tr.x1 && p.body.z > tr.z0 && p.body.z < tr.z1;
+        if (tr.both ? players.length === 2 && players.every(inTr) : players.some(inTr)) { tr.done = true; tr.fn(this, this.game); }
       }
 
       // goal
@@ -707,6 +891,12 @@
           if (o.moving > 0) o.moving -= dt;
         }
       }
+      for (let i = 0; i < this.npcs.length; i++) { const n = this.npcs[i]; n.model.update(dt, { grounded: true, pose: n.pose }); }
+      for (let i = 0; i < this.objects.length; i++) {
+        const o = this.objects[i];
+        if (o.type === 'seesaw') { o.cool -= dt; o.tilt = MM.damp(o.tilt, 0, 3, dt); o.plank.rotation.z = o.tilt * 0.28; }
+      }
+      if (this.rain) this.updateRain(dt);
       for (let i = this.anim.length - 1; i >= 0; i--) if (this.anim[i](t, dt) === true) this.anim.splice(i, 1);
     }
 

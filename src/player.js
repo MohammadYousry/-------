@@ -4,12 +4,15 @@
   const T = THREE, G = MM.G, Ph = MM.Physics;
 
   class Player {
-    constructor(game, who, outfit) {
+    constructor(game, who, outfit, opts) {
       this.game = game; this.who = who; this.S = MM.CHARS[who];
+      this.opts = opts || {};
       this.model = MM.Characters.create(who, outfit);
+      if (this.opts.scale) this.model.root.scale.setScalar(this.opts.scale);
+      this.speedMul = 1; this.swimming = false;
       this.local = true;
       const S = this.S;
-      this.body = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: S.radius, h: S.height, heavy: S.heavy, who, canPush: who === 'mohamed', grounded: false, ground: null };
+      this.body = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, r: S.radius, h: S.height * (this.opts.scale || 1), heavy: S.heavy, who, canPush: who === 'mohamed', grounded: false, ground: null };
       this.facing = new T.Vector2(0, 1);
       this.yaw = 0;
       this.coyote = 0; this.jumpBuf = 0; this.doubleUsed = false; this.jumpCut = false;
@@ -34,6 +37,17 @@
     addTo(scene, level) {
       scene.add(this.model.root); scene.add(this.shadow); scene.add(this.marker);
       if (this.head) level.addSolid(this.head);
+      this.scene = scene;
+    }
+    // Swap clothes mid-chapter (e.g. Mariem putting on her white coat).
+    setOutfit(key) {
+      const old = this.model;
+      const m = MM.Characters.create(this.who, key);
+      if (this.opts.scale) m.root.scale.setScalar(this.opts.scale);
+      m.root.position.copy(old.root.position); m.root.rotation.copy(old.root.rotation);
+      if (this.scene) { this.scene.remove(old.root); this.scene.add(m.root); }
+      this.model = m;
+      this.game.fx.emit('sparkle', this.headPos(), { n: 24, color: 0xffffff });
     }
     removeFrom(scene) { scene.remove(this.model.root); scene.remove(this.shadow); scene.remove(this.marker); }
 
@@ -64,7 +78,7 @@
       const mag = Math.hypot(mx, mz);
       if (mag > 0.15) this.facing.set(mx / mag, mz / mag);
       if (this.dashT <= 0) {
-        const spd = S.speed * (b.pushing ? 0.6 : 1);
+        const spd = S.speed * (b.pushing ? 0.6 : 1) * this.speedMul * (this.swimming ? 0.7 : 1);
         const tx = mx * spd, tz = mz * spd;
         const acc = (b.grounded ? S.accel : S.airAccel) * dt;
         b.vx = approach(b.vx, tx, acc); b.vz = approach(b.vz, tz, acc);
@@ -72,6 +86,13 @@
       if (b.grounded) { this.coyote = 0.11; this.doubleUsed = false; this.dashUsed = false; this.jumpCut = false; }
       else this.coyote -= dt;
       if (inp && inp.jump) this.jumpBuf = 0.14; else this.jumpBuf -= dt;
+      if (this.swimming && this.jumpBuf > 0) {
+        // paddle up; near the surface this becomes a jump out of the water
+        const w = this.game.level && this.game.level.waterAt(b);
+        b.vy = w && b.y > w.surface - 1.3 ? 9.5 : Math.max(b.vy, 5.5);
+        this.jumpBuf = 0; MM.Audio.sfx('dash');
+        this.game.fx.emit('dust', this.feet().add(new THREE.Vector3(0, 0.5, 0)), { n: 5, color: 0xcfefff });
+      }
       if (this.jumpBuf > 0) {
         if (this.coyote > 0) {
           b.vy = S.jumpV; b.grounded = false; b.ground = null; this.coyote = 0; this.jumpBuf = 0; this.jumpCut = false;
@@ -117,9 +138,9 @@
       }
     }
 
-    receiveToss(fx, fz) {
+    receiveToss(fx, fz, vy) {
       const b = this.body;
-      b.vy = MM.TOSS_V; b.vx = fx * 2.4; b.vz = fz * 2.4; b.grounded = false; b.ground = null;
+      b.vy = vy || MM.TOSS_V; b.vx = fx * 2.4; b.vz = fz * 2.4; b.grounded = false; b.ground = null;
       b.y += 0.05;
       this.doubleUsed = false; this.dashUsed = false; this.jumpCut = true; this.tossedT = 0.6; this.coyote = 0; this.jumpBuf = 0;
       this.model.play('tossed', 0.5);
@@ -129,6 +150,7 @@
 
     love() {
       this.cool = Math.max(this.cool, 0.2);
+      if (this.game.level) this.game.level.onLove(this);
       const p = this.partner();
       const near = p && Math.hypot(p.body.x - this.body.x, p.body.z - this.body.z) < 2.3 && Math.abs(p.body.y - this.body.y) < 1.5;
       if (near) this.game.hug(this, p);
@@ -164,9 +186,20 @@
         if (this.dashT <= 0) { b.vx *= 0.45; b.vz *= 0.45; }
         if (Math.random() < 0.5) this.game.fx.emit('trail', this.feet());
       } else {
-        b.vy -= MM.GRAVITY * dt;
-        if (this.slamming) b.vy = -26;
-        if (b.vy < -28) b.vy = -28;
+        const w = this.game.level && this.game.level.waterAt(b);
+        this.swimming = !!w;
+        if (w) {
+          // float: gentle buoyancy toward the surface, heavy drag
+          const target = w.surface - b.h * 0.72;
+          b.vy += ((target - b.y) * 6 - b.vy * 2.2) * dt;
+          b.vy = MM.clamp(b.vy, -4, 10);
+          this.slamming = false; this.doubleUsed = false; this.dashUsed = false;
+          if (Math.random() < 0.08) this.game.fx.emit('trail', new THREE.Vector3(b.x, w.surface, b.z), { color: 0xffffff });
+        } else {
+          b.vy -= MM.GRAVITY * dt;
+          if (this.slamming) b.vy = -26;
+          if (b.vy < -28) b.vy = -28;
+        }
       }
       const wasAir = !b.grounded;
       Ph.move(solids, b, dt);
@@ -177,6 +210,7 @@
 
     landed(impact) {
       const v = -impact;
+      if (this.game.level) this.game.level.onLand(this, impact);
       if (this.slamming) {
         this.slamming = false;
         MM.Audio.sfx('slam');
@@ -207,11 +241,12 @@
       if (s.a && s.a !== this.lastNetAction) { this.model.play(s.a, s.ad || 0.6); }
       this.lastNetAction = s.a;
       this.pose = s.pose || null;
+      this.swimming = !!s.sw;
       return [b.x - px, b.y - py, b.z - pz];
     }
     netState() {
       const b = this.body, m = this.model;
-      return { x: r3(b.x), y: r3(b.y), z: r3(b.z), vx: r3(b.vx), vy: r3(b.vy), vz: r3(b.vz), yaw: r3(this.yaw), g: b.grounded ? 1 : 0, p: b.pushing ? 1 : 0, a: m.action || null, ad: m.actionDur, pose: this.pose };
+      return { x: r3(b.x), y: r3(b.y), z: r3(b.z), vx: r3(b.vx), vy: r3(b.vy), vz: r3(b.vz), yaw: r3(this.yaw), g: b.grounded ? 1 : 0, p: b.pushing ? 1 : 0, a: m.action || null, ad: m.actionDur, pose: this.pose, sw: this.swimming ? 1 : 0 };
     }
 
     /* -------- visuals -------- */
@@ -225,7 +260,7 @@
       else if (this.dashT > 0) this.yaw = Math.atan2(this.facing.x, this.facing.y);
       m.root.position.set(b.x, b.y, b.z);
       m.root.rotation.y = this.yaw;
-      m.update(dt, { speed: b.grounded ? sp : 0, maxSpeed: this.S.speed, grounded: b.grounded || !!this.pose, vy: b.vy, pushing: b.pushing && sp > 0.3, pose: this.pose });
+      m.update(dt, { speed: b.grounded || this.swimming ? sp : 0, maxSpeed: this.S.speed, grounded: b.grounded || !!this.pose, vy: b.vy, pushing: b.pushing && sp > 0.3, pose: this.pose, umbrella: this.umbrella, swim: this.swimming && !b.grounded });
       // blob shadow
       const gy = Ph.groundBelow(solids, b.x, b.z, b.y + 0.05, b.r);
       if (gy > -1e8) {
@@ -237,7 +272,7 @@
         this.shadow.material.opacity = 0.32 * k;
       } else this.shadow.visible = false;
       this.marker.visible = !!showMarker;
-      this.marker.position.set(b.x, b.y + m.height + 0.38 + Math.sin(m.t * 3) * 0.05, b.z);
+      this.marker.position.set(b.x, b.y + m.height * (this.opts.scale || 1) + 0.38 + Math.sin(m.t * 3) * 0.05, b.z);
     }
   }
 

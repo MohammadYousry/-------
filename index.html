@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#140a1c">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Bhaijaan+2:wght@400;500;600;700;800&family=Yellowtail&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Baloo+Bhaijaan+2:wght@400;500;600;700;800&family=Yellowtail&display=swap">
 <style>
 /* Layout: a full-bleed 3D stage; menus float as ink-glass panels anchored to the lower left like a storybook page, HUD hugs the edges. */
 :root{
@@ -28,6 +28,7 @@
   --danger:#ff7a6b;
   --f-script:"Yellowtail","Brush Script MT","Segoe Script",cursive;
   --f-ui:"Baloo Bhaijaan 2","Trebuchet MS","Segoe UI",system-ui,sans-serif;
+  --f-ar:"Aref Ruqaa","Baloo Bhaijaan 2",serif;
   --s-xs:13px; --s-sm:15px; --s-md:18px; --s-lg:24px; --s-xl:36px; --s-xxl:64px;
   color-scheme:dark;
 }
@@ -77,6 +78,7 @@ button{font:inherit;color:inherit}
 .title-ar .h{color:var(--rose)}
 .title-tag{font-size:var(--s-md);color:var(--muted);margin:0;max-width:36ch}
 .title-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.title-links .wide{grid-column:1/-1}
 .title-links .btn{font-size:var(--s-sm);min-height:42px;padding:8px 12px}
 .title-foot{font-size:var(--s-xs);color:var(--muted)}
 
@@ -134,6 +136,16 @@ button{font:inherit;color:inherit}
 .polaroid.locked h4{color:var(--muted)}
 .polaroid .acts{display:flex;gap:6px;flex-wrap:wrap}
 .polaroid .acts button{border:1px solid #e3d3dc;background:#fff;color:#5a2c4d;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}
+
+/* our story timeline */
+.timeline{list-style:none;margin:0;padding:0 0 0 18px;border-left:2px solid rgba(255,111,156,.45);display:flex;flex-direction:column;gap:14px}
+.timeline li{position:relative;display:grid;grid-template-columns:minmax(120px,170px) minmax(0,1fr);gap:12px;align-items:baseline}
+.timeline li::before{content:"";position:absolute;left:-25px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--rose);box-shadow:0 0 0 4px rgba(255,111,156,.18)}
+.timeline li.future::before{background:transparent;border:2px solid var(--gold)}
+.timeline .tl-date{font-weight:800;color:var(--gold);font-size:var(--s-sm);font-variant-numeric:tabular-nums}
+.timeline b{font-size:var(--s-md)}
+.timeline p{margin:2px 0 0;color:var(--muted);line-height:1.5;font-size:var(--s-sm)}
+@media (max-width:640px){.timeline li{grid-template-columns:minmax(0,1fr);gap:2px}}
 
 /* how to + settings */
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
@@ -193,6 +205,17 @@ button{font:inherit;color:inherit}
 #together svg{width:84px;height:84px}
 #subtitle{position:absolute;left:50%;bottom:calc(64px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:12;background:rgba(14,6,20,.82);border:1px solid var(--line);border-radius:14px;padding:8px 16px;max-width:min(680px,92vw);font-size:var(--s-md);line-height:1.4;text-align:center;pointer-events:none}
 #subtitle b{margin-right:6px}
+#subtitle.narr{font-style:italic;color:#ffe9d6}
+/* story captions, camera flash, rhythm lanes */
+#cinema{position:absolute;left:50%;top:16%;transform:translate(-50%,-8px);z-index:12;text-align:center;pointer-events:none;opacity:0;transition:opacity .8s ease,transform .8s ease;width:min(760px,92vw)}
+#cinema.in{opacity:1;transform:translate(-50%,0)}
+#cinema-t{font-family:var(--f-script);font-size:clamp(40px,7vw,76px);line-height:1;color:#fff;text-shadow:0 4px 30px rgba(255,111,156,.7),0 2px 6px rgba(0,0,0,.6)}
+#cinema-s{margin-top:8px;font-size:var(--s-md);font-weight:700;color:#ffe9d6;text-shadow:0 2px 10px rgba(0,0,0,.8)}
+#flash{position:absolute;inset:0;z-index:30;background:#fff;opacity:0;pointer-events:none}
+#flash.go{animation:flash .55s ease-out}
+@keyframes flash{0%{opacity:.95}100%{opacity:0}}
+#rhythm{position:absolute;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:12;pointer-events:none}
+.dedication{font-family:var(--f-ar);font-size:clamp(22px,3.6vw,32px);line-height:1.7;color:#ffe2ec;direction:rtl;margin:0;text-shadow:0 2px 14px rgba(0,0,0,.6)}
 #toasts{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:calc(70px + env(safe-area-inset-top,0px));z-index:13;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none}
 .toast{background:#fbf6f0;color:#2b1a2e;border-radius:10px;padding:10px 14px;max-width:min(320px,80vw);box-shadow:0 10px 30px rgba(0,0,0,.45);animation:tin .45s cubic-bezier(.2,.9,.3,1.2) both}
 .toast.out{animation:tout .4s ease forwards}
@@ -213,7 +236,7 @@ button{font:inherit;color:inherit}
 .stat span{font-size:var(--s-xs);color:var(--muted)}
 .quote{font-size:var(--s-md);line-height:1.5;color:var(--cream);border-left:3px solid var(--rose);padding-left:12px;margin:0}
 #scr-ending{align-items:center;justify-content:center;text-align:center;background:linear-gradient(180deg,rgba(14,6,20,0) 30%,rgba(14,6,20,.85))}
-.credits{display:flex;flex-direction:column;gap:10px;align-items:center;max-width:640px;margin-top:auto}
+.credits{display:flex;flex-direction:column;gap:10px;align-items:center;max-width:700px;margin-top:auto;background:rgba(14,6,20,.62);border:1px solid var(--line);border-radius:24px;padding:18px 22px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .credits .h-script{font-size:clamp(48px,9vw,92px)}
 .credits p{margin:0;font-size:var(--s-md);line-height:1.5}
 
@@ -288,6 +311,9 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
   </div>
   <div id="together" hidden><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="rgba(20,8,28,.6)" stroke="rgba(255,255,255,.2)" stroke-width="8"/><circle id="together-ring" cx="50" cy="50" r="42" fill="none" stroke="#ff6f9c" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" transform="rotate(-90 50 50)"/><path d="M50 72s-17-10.5-21.8-20.9C25 43.4 29.7 35 38.3 35c4.8 0 8.2 2.5 11.7 6.8 3.5-4.3 6.9-6.8 11.7-6.8 8.6 0 13.3 8.4 10.1 16.1C67 61.5 50 72 50 72z" fill="#ff6f9c"/></svg><span id="together-l">Together…</span></div>
   <div id="subtitle" hidden><b id="sub-who"></b><span id="sub-text"></span></div>
+  <div id="cinema" aria-live="polite"><div id="cinema-t"></div><div id="cinema-s"></div></div>
+  <canvas id="rhythm" hidden></canvas>
+  <div id="flash"></div>
   <div id="toasts"></div>
 
   <!-- ===== touch controls ===== -->
@@ -304,10 +330,10 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
   <!-- ===== TITLE ===== -->
   <section class="screen" id="scr-title" hidden>
     <div class="title-wrap">
-      <div class="eyebrow">A co-op love story · 2021 → forever</div>
+      <div class="eyebrow">A co-op love story · school → forever</div>
       <h1 class="h-script title-name">Mohamed <span class="amp">&amp;</span> Mariem</h1>
       <div class="title-ar">محمد <span class="h">♥</span> مريم</div>
-      <p class="title-tag">From a classroom glance to a home of our own. Nine chapters you can only finish together.</p>
+      <p class="title-tag">From two kids at the same school to Dr. Mariem, our home and forever. Twenty chapters you can only finish together.</p>
       <div class="stack">
         <button class="btn primary" data-act="local"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M12 5v13M8 21h8"/></svg></span><span>Play together<span class="sub">Same screen · split-screen · keyboard or gamepads</span></span></button>
         <button class="btn" data-act="online"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg></span><span>Play online<span class="sub">Two phones or laptops · share a room code</span></span></button>
@@ -318,6 +344,7 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
         <button class="btn" data-act="album">Our album</button>
         <button class="btn" data-act="howto">How to play</button>
         <button class="btn" data-act="settings">Settings</button>
+        <button class="btn wide" data-act="timeline">Our story, date by date</button>
       </div>
       <div class="title-foot" id="title-foot">Made for Mohamed &amp; Mariem.</div>
     </div>
@@ -422,11 +449,21 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
         <div class="set-row"><label for="set-music">Music</label><input type="range" id="set-music" min="0" max="1" step="0.05"></div>
         <div class="set-row"><label for="set-sfx">Sound effects</label><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
         <div class="set-row"><label>Graphics</label><div class="seg" id="q-seg"><button data-q="low">Light</button><button data-q="high">Pretty</button></div></div>
-        <div class="set-row"><label>Mohamed's outfit</label><div class="seg" id="o-seg-m"><button data-o="0">Nile night</button><button data-o="1">Café date</button></div></div>
-        <div class="set-row"><label>Mariem's outfit</label><div class="seg" id="o-seg-f"><button data-o="0">Nile night</button><button data-o="1">Café date</button></div></div>
+        <div class="set-row"><label>Mohamed's outfit</label><div class="seg" id="o-seg-m"><button data-o="0">Evening</button><button data-o="1">Café date</button></div></div>
+        <div class="set-row"><label>Mariem's outfit</label><div class="seg" id="o-seg-f"><button data-o="0">Evening</button><button data-o="1">Café date</button></div></div>
         <div class="set-row"><div><label for="song-file">Our song</label><div class="muted" style="font-size:var(--s-xs)">Pick an MP3 (a Suno track works great). It replaces the game music on this device.</div></div><div class="row"><input type="file" id="song-file" accept="audio/*" hidden><button class="btn small" data-act="pick-song">Choose song</button><button class="btn small" data-act="clear-song" id="clear-song" hidden>Remove</button></div></div>
+        <div class="set-row"><div><label>Story outfits</label><div class="muted" style="font-size:var(--s-xs)">Some chapters dress you for the moment: school uniforms, the white coat, the engagement, the wedding.</div></div></div>
         <div class="set-row"><label>Progress</label><button class="btn small" data-act="reset-progress" id="reset-btn">Reset progress</button></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ===== OUR STORY (TIMELINE) ===== -->
+  <section class="screen solid" id="scr-timeline" hidden>
+    <button class="btn small back" data-act="back">← Back</button>
+    <div class="page" style="max-width:760px">
+      <div class="page-head"><div class="eyebrow">The real dates</div><h2 class="h2">Our story, date by date</h2><p class="muted" style="margin:0">Every chapter in this game happened, or is about to.</p></div>
+      <ol class="timeline" id="timeline"></ol>
     </div>
   </section>
 
@@ -474,11 +511,13 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
   <!-- ===== ENDING ===== -->
   <section class="screen" id="scr-ending" hidden>
     <div class="credits">
-      <div class="eyebrow">The end of this chapter</div>
+      <div class="eyebrow">The story continues</div>
       <div class="h-script">Better together</div>
-      <p>Mohamed &amp; Mariem<br><span class="muted">2021 · school · the grind · miles apart · U3 AI · the Nile · our car · our home · Dr. Mariem · forever</span></p>
-      <p class="muted">The best chapters are still unwritten.</p>
-      <div class="row" style="justify-content:center"><button class="btn primary" data-act="album">Open our album</button><button class="btn" data-act="quit">Back to title</button></div>
+      <p>Mohamed &amp; Mariem</p>
+      <p>To our daughter and our son: this game is your father's love letter to your mother.<br>He loved her at school, he loved her with nothing in his pockets, he loved her across an ocean.<br>He loves her now, and he will keep loving her, no matter what.</p>
+      <p class="dedication">إلى بنتنا وابننا: اللعبة دي جواب حب من بابا لماما. حبيتها، وبحبها، وهفضل أحبها مهما حصل.</p>
+      <p class="muted">"I'll never leave Mariem." · Mohamed, 2026</p>
+      <div class="row" style="justify-content:center"><button class="btn primary" data-act="album">Open our album</button><button class="btn" data-act="timeline">Our story, date by date</button><button class="btn" data-act="quit">Back to title</button></div>
     </div>
   </section>
 
@@ -494,11 +533,15 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
 <script src="src/gfx.js"></script>
 <script src="src/characters.js"></script>
 <script src="src/props.js"></script>
+<script src="src/props2.js"></script>
 <script src="src/physics.js"></script>
 <script src="src/world.js"></script>
 <script src="src/player.js"></script>
 <script src="src/drive.js"></script>
+<script src="src/concert.js"></script>
 <script src="src/levels.js"></script>
+<script src="src/levels2.js"></script>
+<script src="src/levels3.js"></script>
 <script src="src/net.js"></script>
 <script src="src/ui.js"></script>
 <script src="src/game.js"></script>

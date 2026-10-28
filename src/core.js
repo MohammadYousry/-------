@@ -3,7 +3,7 @@ window.MM = window.MM || {};
 (function (MM) {
   'use strict';
 
-  MM.VERSION = '1.0.0';
+  MM.VERSION = '2.0.0';
   MM.DEBUG = /[?&]debug=1/.test(location.search);
 
   MM.clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -74,9 +74,10 @@ window.MM = window.MM || {};
   MM.TOSS_V = 17.5;
 
   /* ---------------- Save data ---------------- */
-  const SAVE_KEY = 'mm-love-save-v1';
+  // v2: the story grew from 9 to 20 chapters, so chapter progress starts fresh (settings and photos carry over).
+  const SAVE_KEY = 'mm-love-save-v2', OLD_KEY = 'mm-love-save-v1';
   const defaultSave = () => ({
-    v: 1,
+    v: 2,
     unlocked: 1,
     chapters: {},
     memories: [],
@@ -86,9 +87,11 @@ window.MM = window.MM || {};
   MM.save = defaultSave();
   MM.loadSave = function () {
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
+      let raw = localStorage.getItem(SAVE_KEY), old = false;
+      if (!raw) { raw = localStorage.getItem(OLD_KEY); old = !!raw; }
       if (raw) {
         const d = JSON.parse(raw);
+        if (old) { d.unlocked = 1; d.chapters = {}; d.v = 2; }
         const base = defaultSave();
         MM.save = Object.assign(base, d);
         MM.save.settings = Object.assign(base.settings, d.settings || {});

@@ -7,12 +7,8 @@
   let current = null;
   const history = [];
 
-  const SCREENS = ['title', 'local', 'online', 'chapters', 'album', 'howto', 'settings', 'story', 'pause', 'complete', 'ending'];
-  const CH_BG = {
-    1: 'linear-gradient(160deg,#ffb36b,#ff6f9c)', 2: 'linear-gradient(160deg,#2a1d55,#6a4bb0)', 3: 'linear-gradient(160deg,#5762c9,#ffb38a)',
-    4: 'linear-gradient(160deg,#0e1030,#2fb3a0)', 5: 'linear-gradient(160deg,#0b1240,#1f3fbf)', 6: 'linear-gradient(160deg,#ff8fa3,#ffcf6e)',
-    7: 'linear-gradient(160deg,#e9a07a,#ffd3b8)', 8: 'linear-gradient(160deg,#1f8f80,#8fe3da)', 9: 'linear-gradient(160deg,#ff9cc8,#9fc8ff)',
-  };
+  const SCREENS = ['title', 'local', 'online', 'chapters', 'album', 'howto', 'settings', 'timeline', 'story', 'pause', 'complete', 'ending'];
+  const chBg = (c) => c.card || 'linear-gradient(160deg,' + (MM.THEMES[c.theme] || MM.THEMES.school).skyTop + ',' + (MM.THEMES[c.theme] || MM.THEMES.school).accent + ')';
 
   U.init = function (g) {
     game = g;
@@ -79,11 +75,12 @@
 
   /* ---------- screens ---------- */
   U.show = function (name, keepHistory) {
-    if (current && current !== name && keepHistory !== false && ['title', 'local', 'online', 'chapters', 'settings', 'howto', 'album'].indexOf(current) >= 0) history.push(current);
+    if (current && current !== name && keepHistory !== false && ['title', 'local', 'online', 'chapters', 'settings', 'howto', 'album', 'timeline'].indexOf(current) >= 0) history.push(current);
     SCREENS.forEach((s) => { const el = $('scr-' + s); if (el) el.hidden = s !== name; });
     current = name;
     if (name === 'chapters') renderChapters();
     if (name === 'album') renderAlbum();
+    if (name === 'timeline') renderTimeline();
     if (name === 'settings') U.syncSettings();
     if (name === 'local') renderWho();
     if (name === 'online') { renderWho(); }
@@ -108,7 +105,7 @@
       const rec = MM.save.chapters[c.id];
       const b = document.createElement('button');
       b.className = 'ch-card' + (locked ? ' locked' : '');
-      b.style.setProperty('--ch-bg', CH_BG[c.num]);
+      b.style.setProperty('--ch-bg', chBg(c));
       b.innerHTML = '<span class="st">Chapter ' + c.num + '</span><span class="yr">' + c.year + '</span><span class="nm">' + c.title + '</span><span class="st">' + (rec && rec.done ? 'Done · ' + rec.hearts + ' hearts · ' + MM.fmtTime(rec.time) : locked ? 'Finish the chapter before to unlock' : 'Not played yet') + '</span>';
       if (!locked) b.addEventListener('click', () => { MM.Audio.init(); MM.Audio.sfx('click'); game.pickChapter(c.num); });
       grid.appendChild(b);
@@ -149,6 +146,21 @@
     }
   }
   U.renderAlbum = renderAlbum;
+
+  /* ---------- our story: the real dates ---------- */
+  function renderTimeline() {
+    const wrap = $('timeline');
+    if (wrap.childElementCount) return;
+    MM.TIMELINE.forEach((e) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span class="tl-date"></span><div><b></b><p></p></div>';
+      li.querySelector('.tl-date').textContent = e.date;
+      li.querySelector('b').textContent = e.title;
+      li.querySelector('p').textContent = e.text;
+      if (e.future) li.classList.add('future');
+      wrap.appendChild(li);
+    });
+  }
 
   /* ---------- story card ---------- */
   let storyTimers = [];
@@ -243,14 +255,26 @@
   function nextSub() {
     const s = subQueue.shift();
     if (!s) { $('subtitle').hidden = true; subTimer = null; return; }
+    // who: 'mohamed' | 'mariem' | a family member's name | null for narration
     const c = MM.CHARS[s.who];
-    $('sub-who').textContent = c ? c.name + ':' : '';
+    $('sub-who').textContent = c ? c.name + ':' : s.who ? s.who + ':' : '';
     $('sub-who').style.color = c ? c.color : 'var(--gold)';
+    $('subtitle').classList.toggle('narr', !s.who);
     $('sub-text').textContent = s.text;
     $('subtitle').hidden = false;
     subTimer = setTimeout(nextSub, s.dur * 1000);
   }
   U.clearSubs = function () { subQueue.length = 0; clearTimeout(subTimer); subTimer = null; $('subtitle').hidden = true; };
+
+  // Big centred caption for story moments (null hides it).
+  U.cinemaText = function (title, sub) {
+    const el = $('cinema');
+    if (!el) return;
+    if (!title) { el.classList.remove('in'); return; }
+    $('cinema-t').textContent = title;
+    $('cinema-s').textContent = sub || '';
+    el.classList.add('in');
+  };
 
   U.toast = function (title, text, plain, big) {
     const wrap = $('toasts');
