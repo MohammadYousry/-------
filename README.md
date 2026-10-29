@@ -11,7 +11,7 @@ A 3D co-op love story game in the spirit of *It Takes Two*, made for Mohamed and
 - **Vercel:** go to [vercel.com/new](https://vercel.com/new), import this GitHub repository, leave every setting on its default (Framework: *Other*, no build command, output = repository root) and press **Deploy**. Every push updates the site.
 - **GitHub Pages:** **Settings → Pages → Deploy from a branch**, pick the branch and `/ (root)`.
 
-Online play uses a direct peer-to-peer connection (WebRTC through PeerJS's free servers). One player picks **Play online → Create room**, the other enters the 5-letter code or opens the invite link.
+One player picks **Play online → Create room**, the other enters the 5-letter code or opens the invite link. The game connects the two devices directly (WebRTC through PeerJS's free servers) when the networks allow it, and otherwise relays the game through the same secure connection both devices use to find each other, so it works on mobile data and strict Wi-Fi too. If a phone drops for a moment, the game keeps running and reconnects by itself; reopening the invite link mid-chapter puts you back in the same chapter.
 
 ## Modes
 

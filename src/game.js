@@ -312,6 +312,7 @@
     }
 
     quitToTitle(send) {
+      this.stopReconnect();
       if (this.mode === 'online') { if (send) this.net.send({ t: 'quit' }); setTimeout(() => this.net.close(), 200); }
       this.mode = null; this.chapter = null;
       I.capture = false;
@@ -628,22 +629,44 @@
 
     bindNet() {
       const N = this.net, ui = this.ui;
+      const via = () => (N.route === 'relay' ? ' (through the relay: works on any network)' : '');
       N.on('connected', () => {
-        if (N.role === 'host') { ui.online.status('Your partner joined! Pick a chapter and press Start.', 'ok'); ui.online.canStart(true); this.sendLobby(); }
-        else { ui.online.lobby(N.code, false); ui.online.msg(''); ui.online.status('Connected! Waiting for your partner to start…', 'ok'); N.send({ t: 'hello' }); }
+        if (this.reconnecting) { this.stopReconnect(); ui.toast('', 'Reconnected. Carry on!', true); }
+        if (N.role === 'host') { ui.online.status('Your partner joined' + via() + '! Pick a chapter and press Start.', 'ok'); ui.online.canStart(true); this.sendLobby(); }
+        else { ui.online.lobby(N.code, false); ui.online.msg(''); ui.online.status('Connected' + via() + '! Waiting for your partner to start…', 'ok'); N.send({ t: 'hello', ch: this.mode === 'online' && this.chapter ? this.chapter.num : 0 }); }
       });
+      N.on('route', () => { if (N.connected && ui.current() === 'online') ui.online.status((N.role === 'host' ? 'Your partner joined' : 'Connected') + via() + '.', 'ok'); });
       N.on('lost', () => {
-        if (this.mode === 'online' && this.state !== 'title') { ui.toast('', 'Connection to your partner was lost. Back to the title in a moment.', true); setTimeout(() => { if (this.mode === 'online') this.quitToTitle(false); }, 2500); }
-        else { ui.online.status('Your partner disconnected.', 'err'); ui.online.canStart(false); }
+        if (this.mode === 'online' && this.state !== 'title') {
+          // a dropped phone or a network switch: keep the chapter running and try to get back together
+          if (this.reconnecting) return;
+          this.reconnecting = true;
+          ui.toast('', 'Lost your partner for a moment. Reconnecting…', true);
+          if (N.role === 'guest') { setTimeout(() => { if (this.reconnecting) N.rejoin(); }, 400); this.rejoinT = setInterval(() => { if (this.reconnecting) N.rejoin(); }, 13000); }
+          this.reconnT = setTimeout(() => { if (!this.reconnecting) return; this.stopReconnect(); ui.toast('', 'Couldn\'t reconnect. Back to the title.', true); if (this.mode === 'online') this.quitToTitle(false); }, 60000);
+        } else { ui.online.status('Your partner disconnected.', 'err'); ui.online.canStart(false); }
       });
-      N.on('error', (msg) => { if (ui.current() === 'online') { ui.online.msg(msg, 'err'); ui.online.status(msg, 'err'); } else ui.toast('', msg, true); });
+      N.on('error', (msg) => { if (this.reconnecting) return; if (ui.current() === 'online') { ui.online.msg(msg, 'err'); ui.online.status(msg, 'err'); } else ui.toast('', msg, true); });
       N.on('msg', (d) => this.onNet(d));
     }
+
+    stopReconnect() { this.reconnecting = false; clearTimeout(this.reconnT); clearInterval(this.rejoinT); }
 
     onNet(d) {
       const ui = this.ui;
       switch (d.t) {
-        case 'hello': this.sendLobby(); break;
+        case 'hello':
+          this.sendLobby();
+          // the guest came back mid-chapter: bring them into the same chapter, at the same point
+          if (this.mode === 'online' && this.net.role === 'host' && this.chapter && ['story', 'play', 'paused'].indexOf(this.state) >= 0) {
+            const snap = this.level ? this.level.snapshot() : null;
+            if (d.ch !== this.chapter.num) {
+              this.net.send({ t: 'start', ch: this.chapter.num, hostChar: this.onlineChar });
+              if (this.state !== 'story') this.net.send({ t: 'go', snap });
+            } else if (snap) this.net.send({ t: 'snap', snap });
+          }
+          break;
+        case 'snap': if (this.level && d.snap) this.level.applySnapshot(d.snap); break;
         case 'full': ui.online.msg('That room already has two players.', 'err'); this.net.close(); break;
         case 'lobby':
           this.myChar = other(d.hostChar);
