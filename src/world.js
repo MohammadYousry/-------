@@ -16,14 +16,25 @@
   const AMBIENCE = { sea: 'sea', sharm: 'sea', sunset: 'sea', alex: 'city', miles: 'sea', nile: 'sea', yousr: 'rain', rain: 'rain', grind: 'night', tech: 'night', garden: 'birds', forever: 'birds', school: 'birds', physics: 'birds', home: 'birds', family: 'city', cairo: 'city', med: 'birds' };
   const HINT = /\b(push|toss|jump|power|press|stand|only|stay|ride|pick|both|button|slam|dash|climb|lift|hold|switch|move|crawl|steer|hop|take the bus|look both|squeeze|fits)\b/i;
 
+  // [pattern, size]: 1 tiles, 2 wooden planks (size = plank length), 3 paving bricks
+  const FLOOR = { school: [2, 2.4], physics: [2, 2.4], grind: [2, 2.4], family: [2, 2.4], nile: [2, 2.8], yousr: [2, 3.0], alex: [3, 0.9], sunset: [3, 0.9], cairo: [3, 0.8], miles: [3, 1.0], rain: [3, 0.9], med: [1, 0.8], anniversary: [1, 1.0] };
+  function isGrass(c) { const h = {}; c.getHSL(h, T.SRGBColorSpace); return h.h > 0.2 && h.h < 0.45 && h.s > 0.2 && h.l > 0.2 && h.l < 0.8; }
+  // world-space variation on a level surface: grass gets darker, yellower patches; sand gets sun-bleached ones
+  function surface(mat, top) {
+    if (!mat || !mat.isMeshStandardMaterial || mat.userData.detail || mat.transparent) return;
+    const c = mat.color, h = {}; c.getHSL(h, T.SRGBColorSpace);
+    if (top && isGrass(c)) G.detail(mat, 0.16, c.clone().offsetHSL(0.04, 0.04, -0.1), 0.55);
+    else if (top && h.h > 0.07 && h.h < 0.17 && h.l > 0.55) G.detail(mat, 0.08, c.clone().offsetHSL(0, -0.06, 0.07), 0.45);
+    else if (!top && isGrass(c)) G.detail(mat, 0.3, c.clone().offsetHSL(0.03, 0.05, -0.12), 0.5); // hedges: leafy
+    else G.detail(mat, top ? 0.07 : 0.05, c.clone().offsetHSL(0, 0, -0.07), top ? 0.3 : 0.2);
+  }
+
   function boxMesh(x0, x1, y0, y1, z0, z1, mat) {
     const w = x1 - x0, h = y1 - y0, d = z1 - z0;
     let mats = mat;
     if (mat && mat.top) mats = [mat.side, mat.side, mat.top, mat.bottom || mat.side, mat.front || mat.side, mat.side];
-    const geo = new T.BoxGeometry(w, h, d); geo.userData.own = true;
-    // world-space UVs: textures tile every 2 m whatever the block size
-    const uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
-    for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / 2, uv.getY(i) * dims[f][1] / 2); }
+    // rounded edges on "Pretty"; world-space UVs so textures tile every 2 m whatever the block size
+    const geo = G.bevelBox(w, h, d, G.hq ? Math.min(0.07, Math.min(w, h, d) * 0.25) : 0, 2); geo.userData.own = true;
     const m = new T.Mesh(geo, mats);
     m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
     m.castShadow = true; m.receiveShadow = true;
@@ -44,13 +55,15 @@
       this.spawns = {}; this.goal = null;
       this.time = 0; this.killY = def.killY != null ? def.killY : -12;
       this.anim = []; // per-frame decorative animations
-      this.npcs = []; this.waters = []; this.paints = []; this.photos = []; this.hints = []; this.interacts = [];
+      this.npcs = []; this.waters = []; this.paints = []; this.photos = []; this.hints = []; this.interacts = []; this.grassAreas = []; this.lamps = [];
       this.warmth = 1;
       this.heartsTotal = 0; this.memTotal = 0;
       this.rng = MM.rng(def.num * 977 + 13);
       this.M = this.makeMaterials(this.theme);
       this.setupEnvironment();
       def.build(this, MM.Props);
+      if (this.grassAreas.length) this.makeGrass();
+      if (G.hq && this.lamps.length && (this.theme.stars || this.def.rain || this.def.night || ['cairo', 'nile', 'grind', 'tech', 'rain', 'yousr'].indexOf(this.def.theme) >= 0)) this.makeLampLights();
       this.setHints(MM.save.settings.hints !== false);
       if (def.rain) this.makeRain();
       this.makeAmbient();
@@ -68,18 +81,49 @@
       }
       M.plat = { top: G.mat(th.platTop || th.groundTop, { r: 0.8 }), side: G.mat(th.platSide || th.groundSide, { r: 0.9 }) };
       M.wall = { top: G.mat(th.wallTop || th.wall, { r: 0.85 }), side: G.mat(th.wall, { r: 0.9 }) };
+      if (G.hq) {
+        // floors get the pattern of the place: planks indoors and on piers, paving on the Corniche, tiles at the hospital
+        const pat = FLOOR[this.def.floor || this.def.theme];
+        if (pat) ['ground', 'plat'].forEach((k) => { if (M[k].top.map) return; const m = M[k].top.clone(); m.userData = { pattern: true }; G.detail(m, 0.06, m.color.clone().offsetHSL(0, 0, -0.06), 0.3, pat[0], pat[1]); M[k].top = m; });
+        [M.ground.top, M.plat.top].forEach((m) => { if (!m.map) surface(m, true); });
+        [M.ground.side, M.plat.side, M.wall.side, M.wall.top].forEach((m) => surface(m, false));
+      }
       M.accent = G.mat(th.accent, { r: 0.6 });
       M.dark = G.mat(th.dark || '#2a2030', { r: 0.9 });
       M.water = new T.MeshStandardMaterial({ color: th.water || '#2b6cb0', roughness: 0.12, metalness: 0.35, transparent: true, opacity: 0.86 });
       // gentle rolling waves, computed on the GPU
       this.waterTime = { value: 0 };
+      M.water.color.multiplyScalar(G.hq ? 0.85 : 1);
       M.water.onBeforeCompile = (sh) => {
         sh.uniforms.uTime = this.waterTime;
-        sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', [
+        sh.uniforms.uGlint = { value: !G.hq ? 0 : th.stars || this.def.rain || ['nile', 'cairo', 'tech', 'grind'].indexOf(this.def.theme) >= 0 ? 0.22 : 1 };
+        sh.vertexShader = 'uniform float uTime; varying vec3 vWW;\n' + sh.vertexShader.replace('#include <begin_vertex>', [
           '#include <begin_vertex>',
           'vec4 wwp = modelMatrix * vec4(position, 1.0);',
+          'vWW = wwp.xyz;',
           'transformed.z += sin(wwp.x * 0.42 + uTime * 1.3) * 0.08 + cos(wwp.z * 0.36 + uTime * 1.05) * 0.07 + sin((wwp.x + wwp.z) * 0.9 + uTime * 2.1) * 0.025;',
         ].join('\n'));
+        sh.fragmentShader = 'uniform float uTime; uniform float uGlint; varying vec3 vWW;\n' + G.NOISE_GLSL + '\n' + sh.fragmentShader
+          .replace('#include <normal_fragment_maps>', [
+            '#include <normal_fragment_maps>',
+            'if (uGlint > 0.01) {',
+            '  vec2 q = vWW.xz;',
+            '  float a = mmN(q * 0.9 + vec2(uTime * 0.35, uTime * 0.2)) - mmN(q * 0.9 - vec2(uTime * 0.25, -uTime * 0.3));',
+            '  float b = mmN(q * 2.3 + vec2(-uTime * 0.5, uTime * 0.4)) - mmN(q * 2.1 + vec2(uTime * 0.45, uTime * 0.15));',
+            '  float near = 1.0 - smoothstep(22.0, 70.0, length(vViewPosition));',
+            '  vec3 wn = normalize(vec3((a * 0.22 + b * 0.12) * near, 1.0, (b * 0.22 - a * 0.1) * near));',
+            '  normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);',
+            '}',
+          ].join('\n'))
+          .replace('#include <emissivemap_fragment>', [
+            '#include <emissivemap_fragment>',
+            'if (uGlint > 0.01) {',
+            '  float s = mmN(vWW.xz * 6.5 + vec2(uTime * 0.9, -uTime * 0.6)) * mmN(vWW.xz * 8.3 - vec2(uTime * 0.7, uTime * 1.1));',
+            '  totalEmissiveRadiance += vec3(1.0, 0.97, 0.9) * smoothstep(0.56 + (1.0 - uGlint) * 0.1, 0.72, s) * 1.1 * uGlint * (1.0 - smoothstep(18.0, 55.0, length(vViewPosition)));',
+            '  float band = mmN(vWW.xz * 0.6 + uTime * 0.1);',
+            '  totalEmissiveRadiance += diffuseColor.rgb * smoothstep(0.55, 0.9, band) * 0.18 * uGlint;',
+            '}',
+          ].join('\n'));
       };
       return M;
     }
@@ -102,6 +146,32 @@
       }
       this.group.add(sun); this.group.add(sun.target);
       game.scene.add(this.group);
+      if (game.quality === 'high') this.skyLight(th);
+    }
+
+    // Image-based light: the level's own sky, blurred into an environment map. Every surface picks up the sky's
+    // colour from above and soft reflections (water, metal, glass, shiny shoes), so nothing looks flat-lit.
+    skyLight(th) {
+      try {
+        const r = this.game.renderer, pm = new T.PMREMGenerator(r);
+        const env = new T.Scene();
+        // a dimmer copy of the sky: it adds colour and soft reflections without washing the scene out
+        const k = th.stars || this.def.rain ? 0.7 : 0.5, dim = (c) => '#' + new T.Color(c).multiplyScalar(k).getHexString();
+        const s = G.makeSky(dim(th.skyTop), dim(th.skyBottom), { horizon: dim(th.horizon || th.skyBottom) });
+        env.add(s);
+        // a warm floor bounce below the horizon
+        const fl = new T.Mesh(new T.CircleGeometry(300, 24), new T.MeshBasicMaterial({ color: new T.Color(th.groundTop || th.platTop || '#b39a80').multiplyScalar(0.3), side: T.DoubleSide }));
+        fl.rotation.x = -Math.PI / 2; fl.position.y = -30; env.add(fl);
+        const was = G.skyPost.value; G.skyPost.value = 1;
+        this.envRT = pm.fromScene(env, 0.035, 0.1, 1000);
+        G.skyPost.value = was;
+        pm.dispose();
+        s.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        fl.geometry.dispose(); fl.material.dispose();
+        this.game.scene.environment = this.envRT.texture;
+        // the sky now lights everything: the hemisphere fill steps back so it isn't twice as bright
+        this.hemi.intensity *= 0.62;
+      } catch (e) { console.warn('sky light', e); }
     }
 
     // Floating light in the air: fireflies at night, petals in gardens and at home, dust motes in daylight.
@@ -125,6 +195,98 @@
       this.add(pts);
       this.ambient = { pts, pos, base, n, kind, seed: r() * 10 };
     }
+    // Short grass on every green surface: it sways in the wind and parts around the two of you.
+    makeGrass() {
+      const touch = MM.Input && MM.Input.isTouch && MM.Input.isTouch();
+      const dens = touch ? 9 : 22, cap = touch ? 12000 : 32000;
+      let area = 0; this.grassAreas.forEach((a) => { area += (a.x1 - a.x0) * (a.z1 - a.z0); });
+      const keep = Math.min(1, cap / Math.max(1, area * dens));
+      const ex = [];
+      this.objects.forEach((o) => { if (o.type === 'plate') ex.push([o.x, o.z, Math.max(o.w, o.d) * 0.72 + 0.25]); });
+      this.photos.forEach((p) => ex.push([p.x, p.z, 1.45]));
+      const zones = this.goal ? this.goal.zones : [];
+      const free = (x, z, y) => !ex.some((e) => (x - e[0]) * (x - e[0]) + (z - e[1]) * (z - e[1]) < e[2] * e[2]) && !zones.some((zn) => x > zn.x0 - 0.2 && x < zn.x1 + 0.2 && z > zn.z0 - 0.2 && z < zn.z1 + 0.2 && Math.abs(y - (zn.y || 0)) < 0.6);
+      const r = MM.rng(this.def.num * 7 + 3), list = [];
+      this.grassAreas.forEach((a) => {
+        const n = Math.round((a.x1 - a.x0) * (a.z1 - a.z0) * dens * keep);
+        for (let i = 0; i < n; i++) {
+          const x = a.x0 + 0.12 + r() * (a.x1 - a.x0 - 0.24), z = a.z0 + 0.12 + r() * (a.z1 - a.z0 - 0.24);
+          if (free(x, z, a.y)) list.push([x, a.y, z, a]);
+        }
+      });
+      if (!list.length) return;
+      const geo = new T.BufferGeometry();
+      geo.setAttribute('position', new T.Float32BufferAttribute([-0.04, 0, 0, 0.04, 0, 0, -0.026, 0.5, 0.01, 0.026, 0.5, 0.01, 0, 1, 0.03], 3));
+      geo.setAttribute('normal', new T.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+      geo.setAttribute('color', new T.Float32BufferAttribute([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.86, 0.86, 0.86, 0.86, 0.86, 0.86, 1.18, 1.18, 1.1], 3));
+      geo.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
+      geo.userData.own = true;
+      const mat = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: T.DoubleSide });
+      this.grassTime = { value: 0 };
+      this.grassP = [{ value: new T.Vector3(0, -99, 0) }, { value: new T.Vector3(0, -99, 0) }];
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = this.grassTime; sh.uniforms.uP1 = this.grassP[0]; sh.uniforms.uP2 = this.grassP[1];
+        sh.vertexShader = 'uniform float uTime; uniform vec3 uP1; uniform vec3 uP2;\n' + sh.vertexShader.replace('#include <project_vertex>', [
+          'vec4 mvPosition = vec4(transformed, 1.0);',
+          '#ifdef USE_INSTANCING',
+          'mvPosition = instanceMatrix * mvPosition;',
+          'vec3 root = (instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;',
+          '#else',
+          'vec3 root = vec3(0.0);',
+          '#endif',
+          'float hh = position.y * position.y;',
+          'float wv = sin(uTime * 1.9 + root.x * 0.45 + root.z * 0.3) * 0.6 + sin(uTime * 3.7 + root.x * 1.3 + root.z) * 0.25;',
+          'mvPosition.x += wv * hh * 0.08; mvPosition.z += wv * hh * 0.035;',
+          'vec2 d1 = root.xz - uP1.xz; float l1 = length(d1); float k1 = (1.0 - smoothstep(0.15, 0.8, l1)) * step(abs(root.y - uP1.y), 0.8);',
+          'vec2 d2 = root.xz - uP2.xz; float l2 = length(d2); float k2 = (1.0 - smoothstep(0.15, 0.8, l2)) * step(abs(root.y - uP2.y), 0.8);',
+          'mvPosition.xz += d1 / max(l1, 0.001) * k1 * hh * 0.24 + d2 / max(l2, 0.001) * k2 * hh * 0.24;',
+          'mvPosition.y -= (k1 + k2) * hh * 0.12;',
+          'mvPosition = modelViewMatrix * mvPosition;',
+          'gl_Position = projectionMatrix * mvPosition;',
+        ].join('\n'));
+      };
+      const mesh = new T.InstancedMesh(geo, mat, list.length);
+      const m4 = new T.Matrix4(), q = new T.Quaternion(), e = new T.Euler(), v = new T.Vector3(), s = new T.Vector3(), col = new T.Color();
+      list.forEach(([x, y, z, a], i) => {
+        e.set((r() - 0.5) * 0.35, r() * Math.PI * 2, (r() - 0.5) * 0.35); q.setFromEuler(e);
+        const hgt = 0.15 + r() * r() * 0.26;
+        m4.compose(v.set(x, y - 0.01, z), q, s.set(0.8 + r() * 0.6, hgt, 1));
+        mesh.setMatrixAt(i, m4);
+        col.copy(a.color).offsetHSL((r() - 0.5) * 0.05, (r() - 0.3) * 0.12, (r() - 0.4) * 0.1);
+        mesh.setColorAt(i, col);
+      });
+      mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.frustumCulled = false; mesh.castShadow = false; mesh.receiveShadow = true;
+      this.add(mesh);
+      this.grass = mesh;
+    }
+    // At night the street lamps and candles really light the ground around them. Four lights follow
+    // whichever lamps are nearest to you, so the cost stays the same in a street of fifty lamps.
+    makeLampLights() {
+      this.lampLights = [];
+      for (let i = 0; i < 4; i++) { const l = new T.PointLight(0xffd88a, 0, 9, 2); l.position.set(0, -50, 0); this.add(l); this.lampLights.push(l); }
+      this.lampT = 0;
+    }
+    updateLampLights(dt) {
+      this.lampT -= dt;
+      if (this.lampT > 0 || !this.focusPos) return;
+      this.lampT = 0.25;
+      const f = this.focusPos;
+      const near = this.lamps.map((l) => [l, (l.x - f.x) * (l.x - f.x) + (l.z - f.z) * (l.z - f.z) + (l.y - f.y) * (l.y - f.y) * 0.5]).sort((a, b) => a[1] - b[1]).slice(0, 4);
+      this.lampLights.forEach((L, i) => {
+        const n = near[i];
+        if (!n || n[1] > 30 * 30) { L.intensity = 0; return; }
+        L.position.set(n[0].x, n[0].y - (n[0].big ? 0.25 : 0), n[0].z); L.color.copy(n[0].c);
+        L.intensity = n[0].big ? 16 : 2.2; L.distance = n[0].big ? 10 : 3.5;
+      });
+    }
+
+    updateGrass(t) {
+      this.grassTime.value = t;
+      const ps = this.game.players;
+      for (let i = 0; i < 2; i++) { const p = ps[i]; if (p) this.grassP[i].value.set(p.body.x, p.body.y, p.body.z); }
+    }
+
     updateAmbient(t) {
       const A = this.ambient, f = this.focusPos;
       if (!A || !f) return;
@@ -162,11 +324,27 @@
       this.add(m);
       let s = null;
       if (!o.nosolid) s = this.addSolid(Ph.solid(x0, x1, y0, y1, z0, z1, { oneWay: !!o.oneWay, only: o.only, except: o.except }));
+      // green tops grow grass (on "Pretty")
+      const top = mat && mat.top ? mat.top : null;
+      if (G.hq && top && !o.nosolid && !o.oneWay && top.color && !top.map && isGrass(top.color) && (x1 - x0) * (z1 - z0) > 0.8) this.grassAreas.push({ x0, x1, z0, z1, y: y1, color: top.color });
+      if (G.hq && top && top.color && !top.userData.detail && !top.map && !top.transparent && !top.emissiveMap) surface(top, true);
+      const side = mat && mat.side && mat.side.isMaterial ? mat.side : null;
+      if (G.hq && side && side.color && !side.userData.detail && !side.map && !side.transparent && !side.emissiveMap) surface(side, false);
       return { mesh: m, solid: s };
     }
     ground(x0, x1, z0, z1, top, o) {
       top = top || 0; o = o || {};
-      return this.box(x0, x1, top - (o.depth || 3), top, z0, z1, o.mat || this.M.ground, o);
+      return this.box(x0, x1, top - (o.depth || 3), top, z0, z1, this.floorMat(o.mat || this.M.ground), o);
+    }
+    // a level's own floor material gets the place's floor pattern too
+    floorMat(mat) {
+      const pat = G.hq && FLOOR[this.def.floor || this.def.theme];
+      const t0 = mat && mat.top;
+      if (!pat || !t0 || !t0.isMeshStandardMaterial || t0.map || t0.transparent || t0.userData.pattern || isGrass(t0.color)) return mat;
+      this.patCache = this.patCache || new Map();
+      let t = this.patCache.get(t0);
+      if (!t) { t = t0.clone(); t.userData = { pattern: true }; G.detail(t, 0.06, t.color.clone().offsetHSL(0, 0, -0.06), 0.3, pat[0], pat[1]); this.patCache.set(t0, t); }
+      return Object.assign({}, mat, { top: t });
     }
     plat(x0, x1, z0, z1, top, thick, o) { return this.box(x0, x1, top - (thick || 0.5), top, z0, z1, (o && o.mat) || this.M.plat, o); }
     wall(x0, x1, y0, y1, z0, z1, o) { return this.box(x0, x1, y0, y1, z0, z1, (o && o.mat) || this.M.wall, o); }
@@ -196,6 +374,7 @@
         const sh = o.shrink || 0;
         this.addSolid(Ph.solid(b.min.x + sh, b.max.x - sh, b.min.y, o.top != null ? o.top : b.max.y, b.min.z + sh, b.max.z - sh));
       }
+      if (name === 'lampPost' || name === 'candle') { const k = o.s || 1; this.lamps.push({ x, y: y + (name === 'candle' ? 0.6 : 3.35) * k, z, c: new T.Color(name === 'candle' ? '#ffb347' : (o.args && o.args[0]) || '#ffd88a'), big: name === 'lampPost' }); }
       if (o.spin) this.anim.push((t, dt) => { obj.rotation.y += o.spin * dt; });
       if (o.bob) { const y0 = obj.position.y; this.anim.push((t) => { obj.position.y = y0 + Math.sin(t * 1.5 + x) * o.bob; }); }
       return obj;
@@ -975,6 +1154,8 @@
       if (this.ambient) this.updateAmbient(t);
       if (this.sky.userData.tick) this.sky.userData.tick(t);
       this.waterTime.value = t;
+      if (this.grass) this.updateGrass(t);
+      if (this.lampLights) this.updateLampLights(dt);
       for (let i = this.anim.length - 1; i >= 0; i--) if (this.anim[i](t, dt) === true) this.anim.splice(i, 1);
     }
 
@@ -1002,6 +1183,8 @@
     }
 
     dispose() {
+      if (this.envRT) { if (this.game.scene.environment === this.envRT.texture) this.game.scene.environment = null; this.envRT.dispose(); }
+      if (this.grass) { this.grass.geometry.dispose(); this.grass.material.dispose(); }
       this.game.scene.remove(this.group);
       this.game.scene.remove(this.sky);
       this.group.traverse((o) => {

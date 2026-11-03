@@ -13,12 +13,23 @@
   const glowMat = (c, i) => G.mat(c, { e: c, ei: i != null ? i : 1.4, r: 0.5 });
 
   /* ---------------- nature / general ---------------- */
+  // a clump of faceted leaf blobs: lighter where the sun hits the top, darker underneath, swaying in the wind
+  let leafSeed = 1;
+  function foliage(g, base, blobs, scale) {
+    const r = MM.rng(leafSeed++ * 13 + 5), c0 = new T.Color(base);
+    blobs.forEach(([x, y, z, rr]) => {
+      const lift = Math.round(((y - 0.7) * 0.32 + (r() - 0.5) * 0.06) / 0.03) * 0.03;
+      const c = c0.clone().offsetHSL(Math.round((r() - 0.5) * 0.04 / 0.01) * 0.01, 0, lift);
+      const mesh = G.mesh(G.ico(Math.round(rr * scale * 50) / 50, 1), G.leafMat(c), x * scale, y * scale, z * scale, g);
+      mesh.rotation.set(r() * 3, r() * 3, r() * 3);
+      mesh.scale.set(1 + (r() - 0.5) * 0.2, 0.86 + r() * 0.2, 1 + (r() - 0.5) * 0.2);
+    });
+  }
   P.tree = function (h, color) {
     const g = grp(); h = h || 3;
-    cy(g, 0.14, 0.2, h * 0.5, '#7a5236', 0, h * 0.25, 0);
-    sp(g, h * 0.28, color || '#5fae6b', 0, h * 0.62, 0, { flat: true });
-    sp(g, h * 0.2, color || '#6cc077', h * 0.16, h * 0.78, 0.05, { flat: true });
-    sp(g, h * 0.18, color || '#58a463', -h * 0.15, h * 0.74, -0.05, { flat: true });
+    cy(g, 0.12, 0.2, h * 0.56, '#7a5236', 0, h * 0.28, 0, { r: 0.9 });
+    [-1, 1].forEach((s) => { const br = cy(g, 0.045, 0.075, h * 0.26, '#7a5236', s * h * 0.07, h * 0.5, 0, { r: 0.9 }); br.rotation.z = -s * 0.75; });
+    foliage(g, color || '#5fae6b', [[0, 0.64, 0, 0.27], [0.17, 0.74, 0.07, 0.2], [-0.17, 0.72, -0.06, 0.2], [0.03, 0.86, -0.09, 0.18], [-0.07, 0.6, 0.16, 0.17], [0.15, 0.58, -0.14, 0.16], [0, 0.95, 0.03, 0.13], [-0.2, 0.62, 0.05, 0.13]], h);
     return g;
   };
   P.palm = function (h) {
@@ -43,9 +54,9 @@
   };
   P.plant = function (s) {
     const g = grp(); s = s || 1;
-    cy(g, 0.22 * s, 0.17 * s, 0.4 * s, '#d27a52', 0, 0.2 * s, 0);
-    sp(g, 0.32 * s, '#4fa462', 0, 0.62 * s, 0, { flat: true });
-    sp(g, 0.22 * s, '#5cbb70', 0.15 * s, 0.85 * s, 0.05 * s, { flat: true });
+    cy(g, 0.22 * s, 0.17 * s, 0.4 * s, '#d27a52', 0, 0.2 * s, 0, { r: 0.6 });
+    cy(g, 0.21 * s, 0.21 * s, 0.03 * s, '#5a3a28', 0, 0.39 * s, 0);
+    foliage(g, '#4fa462', [[0, 0.62, 0, 0.27], [0.15, 0.8, 0.05, 0.19], [-0.13, 0.78, -0.04, 0.18], [0.02, 0.95, -0.03, 0.14]], s);
     return g;
   };
   P.flower = function (color) {

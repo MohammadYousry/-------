@@ -73,7 +73,19 @@ The ending carries a dedication to their children, in English and Egyptian Arabi
 - **Photo mode:** pause any chapter and choose **Photo mode**. Drag to move the camera, pinch to zoom, pick poses for each of you (wave, hug, kiss, kneel, sit, dance...), a filter (warm, golden hour, black and white, vintage, dreamy) and a frame (a polaroid with your caption, or film). Pictures go to **Our photos**, and **Save / share** puts them in your phone's gallery.
 - **Your special days:** on her birthday (13 July), his (18 July), the Fatiha (15 August), the engagement (16 October), the home (21 October) and Dr. Mariem's day (12 December), the title screen celebrates, there's cake and balloons at home and fireworks over the sea. Set your wedding date in **Settings** for a countdown, and the anniversary after it. The title screen counts the days since the engagement.
 - **Stars and trophies:** every chapter gives up to three stars (finish it, find every heart, find every memory; the driving and concert chapters have their own goals). Twenty trophies to collect together, from *First Hug* to *All the Stars*.
-- **Pretty graphics:** on **Settings → Graphics: Pretty**, lamps, neon, candles and the sun get a soft glow, the skies have clouds, a sun or twinkling stars, the water moves, fireflies, petals and dust drift in the air, and each place has its own background sound (the sea, birds, the night, the rain, the city). Phones adjust the resolution by themselves to stay smooth.
+- **Pretty graphics:** on **Settings → Graphics: Pretty** (the default):
+  - each level is lit by its own sky, with soft reflections on water, metal and glass;
+  - every block and prop has softly rounded edges that catch the light;
+  - floors match the place: wooden planks in classrooms and on the pier, paving on the Corniche, tiles at the hospital, sun-bleached sand, patchy grass;
+  - real grass grows on every green surface, sways in the wind and parts around the two of you;
+  - trees and plants are fuller and move in the breeze;
+  - the sea ripples and sparkles in the sun;
+  - at night the street lamps and candles light the ground around them;
+  - lamps, neon, candles and the sun glow, and a cinematic colour grade adds a vignette, film grain and a soft blur on the far background;
+  - the skies have clouds, a sun or twinkling stars, with fireflies, petals and dust in the air;
+  - each place has its own background sound (the sea, birds, the night, the rain, the city).
+
+  Phones lower the resolution by themselves when they need to, to stay smooth; **Light** turns all of this off for older phones.
 
 ## Make it even more yours
 

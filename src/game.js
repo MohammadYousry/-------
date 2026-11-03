@@ -39,6 +39,7 @@
 
     applyQuality() {
       this.quality = MM.save.settings.quality;
+      G.hq = this.quality === 'high'; G.detailOn.value = G.hq ? 1 : 0;
       const pr = Math.min(window.devicePixelRatio || 1, this.quality === 'high' ? 2 : 1.25);
       this.maxPR = pr; this.curPR = pr; this.perf = { t: 0, frames: 0, slow: 0, fast: 0 };
       this.renderer.setPixelRatio(pr);
@@ -928,6 +929,7 @@
       let dt = (now - this.last) / 1000; this.last = now;
       if (dt > 0.05) dt = 0.05; if (dt < 0) dt = 0;
       this.t += dt;
+      G.windT.value = this.t;
       I.update();
       try { this.update(dt); } catch (e) { console.error(e); }
       this.fx.update(dt);

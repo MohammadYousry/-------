@@ -34,9 +34,127 @@
     return m;
   };
 
+  /* ---------- surface detail ----------
+     On "Pretty", lit surfaces get a soft world-space variation (no two metres of floor look the same) and a
+     second tint mixed in by a large-scale pattern: patches of darker grass, sun-bleached sand, worn stone. */
+  G.hq = true;
+  G.detailOn = { value: 1 };
+  const NOISE = [
+    'float mmH(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+    'float mmN(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+    '  return mix(mix(mmH(i), mmH(i + vec2(1.0, 0.0)), f.x), mix(mmH(i + vec2(0.0, 1.0)), mmH(i + vec2(1.0, 1.0)), f.x), f.y); }',
+  ].join('\n');
+  G.NOISE_GLSL = NOISE;
+  // strength: fine variation; tint/mix: the colour of the large patches and how much of it;
+  // pat: a floor pattern drawn in world space (1 tiles, 2 wooden planks, 3 paving bricks) with a tile size
+  G.detail = function (mat, strength, tint, mix, pat, tile) {
+    if (!mat || mat.userData.detail) return mat;
+    mat.userData.detail = true;
+    const u = { uDStr: { value: strength != null ? strength : 0.08 }, uDTint: { value: new T.Color(tint || mat.color || '#ffffff') }, uDMix: { value: mix || 0 }, uDOn: G.detailOn, uDPat: { value: pat || 0 }, uDTile: { value: tile || 1 } };
+    const prev = Object.prototype.hasOwnProperty.call(mat, 'onBeforeCompile') ? mat.onBeforeCompile : null;
+    mat.onBeforeCompile = (sh, r) => {
+      if (prev) prev(sh, r);
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = 'varying vec3 vDW;\n' + sh.vertexShader.replace('#include <begin_vertex>', [
+        '#include <begin_vertex>',
+        '#ifdef USE_INSTANCING',
+        'vDW = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;',
+        '#else',
+        'vDW = (modelMatrix * vec4(transformed, 1.0)).xyz;',
+        '#endif',
+      ].join('\n'));
+      sh.fragmentShader = 'varying vec3 vDW; uniform float uDStr; uniform vec3 uDTint; uniform float uDMix; uniform float uDOn; uniform float uDPat; uniform float uDTile;\n' + NOISE + '\n' + sh.fragmentShader.replace('#include <color_fragment>', [
+        '#include <color_fragment>',
+        'if (uDOn > 0.5) {',
+        '  vec2 dp = vDW.xz + vDW.y * vec2(0.37, 0.61);',
+        '  float fine = mmN(dp * 3.1) * 0.6 + mmN(dp * 9.7) * 0.4;',
+        '  float big = smoothstep(0.35, 0.75, mmN(dp * 0.23) * 0.7 + mmN(dp * 0.71) * 0.3);',
+        '  diffuseColor.rgb = mix(diffuseColor.rgb, uDTint, big * uDMix);',
+        '  diffuseColor.rgb *= 1.0 + (fine - 0.5) * uDStr * 2.0;',
+        '  if (uDPat > 0.5) {',
+        '    float S = uDTile, line = 0.0, tone = 1.0;',
+        '    if (uDPat < 1.5) {',
+        '      vec2 tt = fract(vDW.xz / S); vec2 e = min(tt, 1.0 - tt) * S;',
+        '      line = 1.0 - smoothstep(0.004, 0.022, min(e.x, e.y));',
+        '      tone = 0.95 + mmH(floor(vDW.xz / S)) * 0.1;',
+        '    } else if (uDPat < 2.5) {',
+        '      float W = S * 0.16, row = floor(vDW.z / W), off = mmH(vec2(row, 7.0)) * S;',
+        '      float u = vDW.x + off, col = floor(u / S);',
+        '      float ex = min(fract(u / S), 1.0 - fract(u / S)) * S, ez = min(fract(vDW.z / W), 1.0 - fract(vDW.z / W)) * W;',
+        '      line = max(1.0 - smoothstep(0.003, 0.012, ez), (1.0 - smoothstep(0.003, 0.014, ex)) * 0.8);',
+        '      tone = (0.88 + mmH(vec2(row, col)) * 0.2) * (0.95 + mmN(vec2(u * 1.2, vDW.z * 26.0)) * 0.1);',
+        '    } else {',
+        '      float H = S * 0.5, row = floor(vDW.z / H), u = vDW.x + mod(row, 2.0) * S * 0.5;',
+        '      float ex = min(fract(u / S), 1.0 - fract(u / S)) * S, ez = min(fract(vDW.z / H), 1.0 - fract(vDW.z / H)) * H;',
+        '      line = 1.0 - smoothstep(0.006, 0.03, min(ex, ez));',
+        '      tone = 0.92 + mmH(vec2(row, floor(u / S))) * 0.16;',
+        '    }',
+        '    diffuseColor.rgb *= tone * (1.0 - line * 0.28);',
+        '  }',
+        '}',
+      ].join('\n'));
+    };
+    const ck = 'mmdetail' + (prev ? prev.toString() : '');
+    mat.customProgramCacheKey = () => ck;
+    mat.needsUpdate = true;
+    return mat;
+  };
+
+  /* ---------- foliage: faceted leaf clusters that sway in the wind ---------- */
+  G.windT = { value: 0 };
+  const leafCache = {};
+  G.leafMat = function (color) {
+    const c = new T.Color(color), k = 'lf' + c.getHexString();
+    if (leafCache[k]) return leafCache[k];
+    const m = new T.MeshStandardMaterial({ color: c, roughness: 0.78, flatShading: true });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uWind = G.windT;
+      sh.vertexShader = 'uniform float uWind;\n' + sh.vertexShader.replace('#include <begin_vertex>', [
+        '#include <begin_vertex>',
+        'vec4 lwp = modelMatrix * vec4(0.0, 0.0, 0.0, 1.0);',
+        'float lsw = sin(uWind * 1.4 + lwp.x * 0.35 + lwp.z * 0.21) * 0.6 + sin(uWind * 2.9 + lwp.x * 0.9) * 0.25;',
+        'transformed.x += lsw * 0.045 * (1.0 + position.y * 2.0);',
+        'transformed.z += lsw * 0.02;',
+      ].join('\n'));
+    };
+    m.customProgramCacheKey = () => 'mmleaf';
+    return (leafCache[k] = m);
+  };
+
   /* ---------- geometry cache ---------- */
   const geoCache = {};
-  G.box = (w, h, d) => geoCache['b' + w + h + d] || (geoCache['b' + w + h + d] = new T.BoxGeometry(w, h, d));
+  G.ico = (r, d) => { const k = 'i' + r + '|' + (d || 1); return geoCache[k] || (geoCache[k] = new T.IcosahedronGeometry(r, d == null ? 1 : d)); };
+  // A box with softly rounded edges: the edges catch the light like a real toy. UVs stay world-scaled
+  // (2 m per tile when `uvScale` is set) so textures don't stretch.
+  G.bevelBox = function (w, h, d, r, uvScale) {
+    r = Math.min(r, w / 4, h / 4, d / 4);
+    if (!(r > 0.004)) { const g0 = new T.BoxGeometry(w, h, d); if (uvScale) { const uv = g0.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]]; for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / uvScale, uv.getY(i) * dims[f][1] / uvScale); } } return g0; }
+    const g = new T.BoxGeometry(w, h, d, 3, 3, 3);
+    const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
+    const hx = w / 2, hy = h / 2, hz = d / 2, ix = hx - r, iy = hy - r, iz = hz - r;
+    const fit = (v, hv) => (Math.abs(v) > hv - 1e-5 ? v : Math.sign(v) * (hv - r));
+    const S = uvScale || 1;
+    for (let i = 0; i < p.count; i++) {
+      let x = fit(p.getX(i), hx), y = fit(p.getY(i), hy), z = fit(p.getZ(i), hz);
+      const nx0 = n.getX(i), ny0 = n.getY(i);
+      const ax = Math.abs(nx0) > 0.5 ? 'x' : Math.abs(ny0) > 0.5 ? 'y' : 'z';
+      // world-scaled UVs that follow the original orientation of each face
+      if (uvScale) {
+        const ud = ax === 'x' ? z : x, vd = ax === 'y' ? z : y, uh = ax === 'x' ? hz : hx, vh = ax === 'y' ? hz : hy;
+        uv.setXY(i, (ud + uh) / S, (vd + vh) / S);
+      }
+      const cx = Math.max(-ix, Math.min(ix, x)), cy = Math.max(-iy, Math.min(iy, y)), cz = Math.max(-iz, Math.min(iz, z));
+      let dx = x - cx, dy = y - cy, dz = z - cz;
+      const L = Math.hypot(dx, dy, dz);
+      if (L > 1e-6) { dx /= L; dy /= L; dz /= L; x = cx + dx * r; y = cy + dy * r; z = cz + dz * r; n.setXYZ(i, dx, dy, dz); }
+      p.setXYZ(i, x, y, z);
+    }
+    return g;
+  };
+  G.box = (w, h, d) => {
+    const k = 'b' + w + '|' + h + '|' + d + (G.hq ? 'r' : '');
+    return geoCache[k] || (geoCache[k] = G.hq ? G.bevelBox(w, h, d, Math.min(0.035, Math.min(w, h, d) * 0.22)) : new T.BoxGeometry(w, h, d));
+  };
   G.sphere = (r, ws, hs) => { const k = 's' + r + ws + hs; return geoCache[k] || (geoCache[k] = new T.SphereGeometry(r, ws || 18, hs || 14)); };
   G.cyl = (rt, rb, h, s) => { const k = 'c' + rt + rb + h + s; return geoCache[k] || (geoCache[k] = new T.CylinderGeometry(rt, rb, h, s || 18)); };
   G.capsule = (r, l) => { const k = 'p' + r + l; return geoCache[k] || (geoCache[k] = new T.CapsuleGeometry(r, l, 6, 14)); };
