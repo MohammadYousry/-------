@@ -96,6 +96,8 @@
           heard();
           return;
         }
+        // a freshly reloaded host hears its guest still talking: take them straight back
+        if (!N.partner && d && d.t !== 'full') { takeSeat(m.src); relaySend({ t: '__welcome' }); if (!N.route) { N.route = 'relay'; fire('route', 'relay'); } }
         if (m.src !== N.partner) return;
       } else {
         if (m.src !== PREFIX + N.code) return;
@@ -140,22 +142,47 @@
       if (t === 'peer-unavailable' && (N.connected || N.route)) return; // relay packets to a partner who stepped away
       onFatal(e);
     });
-    peer.on('disconnected', () => { if (N.peer === peer) { try { peer.reconnect(); } catch (e) { /* ignore */ } } });
+    // lost the signalling server (phone locked, app switched, network change): keep our id and try again with backoff
+    peer.on('disconnected', () => {
+      if (N.peer !== peer || peer.destroyed) return;
+      clearTimeout(N.reconT);
+      N.reconT = setTimeout(() => { if (N.peer === peer && peer.disconnected && !peer.destroyed) { try { peer.reconnect(); } catch (e) { /* ignore */ } } }, N.reconDelay);
+      N.reconDelay = Math.min(5000, N.reconDelay * 2);
+    });
   }
+  N.reconDelay = 400;
 
-  N.host = function (onCode) {
+  // Back from the background (or the screen was locked): reconnect at once instead of waiting.
+  N.resume = function () {
+    if (!N.role || !N.peer) return;
+    N.reconDelay = 400;
+    if (N.peer.disconnected && !N.peer.destroyed) { try { N.peer.reconnect(); } catch (e) { /* ignore */ } }
+    // the partner may have kept talking while we were frozen; give the link a moment before calling it lost
+    N.lastRecv = Math.max(N.lastRecv, performance.now() - LOST_MS / 2);
+    if (N.role === 'guest' && !N.connected) N.rejoin();
+  };
+
+  // fixed: re-open the same room code (after a page reload); the old registration may take a moment to expire
+  N.host = function (onCode, fixed, tries) {
     N.close();
     if (!N.available()) { fire('error', 'Online play isn\'t available here. Open the game from its website link to play online.'); return; }
-    const code = newCode();
+    const code = fixed || newCode();
     let peer;
     try { peer = new window.Peer(PREFIX + code, PEER_OPTS); } catch (e) { fire('error', errText(e)); return; }
-    N.peer = peer; N.role = 'host'; N.code = code;
-    peer.on('open', () => { relayListen(peer); onCode(code); });
+    N.peer = peer; N.role = 'host'; N.code = code; N.opened = false;
+    peer.on('open', () => { N.reconDelay = 400; relayListen(peer); if (!N.opened) { N.opened = true; onCode(code); } });
     peer.on('connection', (conn) => {
       if (!takeSeat(conn.peer, conn.metadata && conn.metadata.re)) { conn.on('open', () => { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 300); }); return; }
       setupConn(conn);
     });
-    peerErrors(peer, (e) => { if (e.type === 'unavailable-id') { N.host(onCode); return; } fire('error', errText(e)); });
+    peerErrors(peer, (e) => {
+      if (e.type === 'unavailable-id') {
+        if (N.opened) return; // our own room after a reconnect: the retry loop above handles it
+        if (fixed && (tries || 0) < 30) { setTimeout(() => { if (N.peer === peer) N.host(onCode, fixed, (tries || 0) + 1); }, 2000); return; }
+        N.host(onCode); return;
+      }
+      fire('error', errText(e));
+    });
     startPing();
   };
 
@@ -166,11 +193,14 @@
     if (code.length !== 5) { fire('error', 'Room codes have 5 letters.'); return; }
     let peer;
     try { peer = new window.Peer(PEER_OPTS); } catch (e) { fire('error', errText(e)); return; }
-    N.peer = peer; N.role = 'guest'; N.code = code; N.partner = PREFIX + code;
+    N.peer = peer; N.role = 'guest'; N.code = code; N.partner = PREFIX + code; N.opened = false;
     peer.on('open', () => {
+      N.reconDelay = 400;
       relayListen(peer);
       // say hello over the relay until the host answers, and try the direct route alongside
-      relaySend({ t: '__hello', re });
+      relaySend({ t: '__hello', re: re || N.seatId });
+      if (N.opened) return; // a reconnect to the server: the hello above is enough
+      N.opened = true;
       clearInterval(N.helloT);
       let tries = 0;
       N.helloT = setInterval(() => {
@@ -197,7 +227,7 @@
   N.sendEv = function (obj) { if (N.role && N.connected) N.send(Object.assign({ t: 'ev' }, obj)); };
 
   N.close = function () {
-    clearInterval(N.pingT); clearInterval(N.helloT); N.helloT = null;
+    clearInterval(N.pingT); clearInterval(N.helloT); clearTimeout(N.reconT); N.helloT = null;
     try { if (N.conn) N.conn.close(); } catch (e) { /* ignore */ }
     try { if (N.peer) N.peer.destroy(); } catch (e) { /* ignore */ }
     N.peer = null; N.conn = null; N.role = null; N.code = null; N.connected = false; N.partner = null; N.route = null;

@@ -72,7 +72,7 @@
     /* -------- per-frame control (local only) -------- */
     control(dt, inp) {
       const S = this.S, b = this.body;
-      this.cool -= dt; this.invuln -= dt; this.tossedT -= dt;
+      this.cool -= dt; this.invuln -= dt; this.tossedT -= dt; this.carryT = (this.carryT || 0) - dt;
       if (this.frozen) { b.vx = MM.damp(b.vx, 0, 10, dt); b.vz = MM.damp(b.vz, 0, 10, dt); return; }
       const mx = inp ? inp.mx : 0, mz = inp ? inp.mz : 0;
       const mag = Math.hypot(mx, mz);
@@ -81,7 +81,10 @@
         const spd = S.speed * (b.pushing ? 0.6 : 1) * this.speedMul * (this.swimming ? 0.7 : 1);
         const tx = mx * spd, tz = mz * spd;
         const acc = (b.grounded ? S.accel : S.airAccel) * dt;
-        b.vx = approach(b.vx, tx, acc); b.vz = approach(b.vz, tz, acc);
+        // after a launch pad, keep the throw unless the player steers
+        if (this.carryT > 0 && !b.grounded && mag < 0.15) { /* glide */ }
+        else { b.vx = approach(b.vx, tx, acc); b.vz = approach(b.vz, tz, acc); }
+        if (b.grounded) this.carryT = 0;
       }
       if (b.grounded) { this.coyote = 0.11; this.doubleUsed = false; this.dashUsed = false; this.jumpCut = false; }
       else this.coyote -= dt;
@@ -202,6 +205,9 @@
         }
       }
       const wasAir = !b.grounded;
+      // safety net: anyone stuck in the air (bouncing, wedged) for 7 s goes back to the last checkpoint
+      this.airT = !b.grounded && !this.swimming && !this.pose ? (this.airT || 0) + dt : 0;
+      if (this.airT > 7 && this.game.level) { this.airT = 0; this.respawn(false); this.game.ui.toast('', 'Back to the last checkpoint', true); return; }
       Ph.move(solids, b, dt);
       if (b.grounded && wasAir) this.landed(b.impact || 0);
       if (this.slamming && b.grounded) this.slamming = false;

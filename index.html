@@ -34,12 +34,15 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;overflow:hidden;background:var(--ink);color:var(--cream);font-family:var(--f-ui);font-size:var(--s-sm);-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
-body{user-select:none;-webkit-user-select:none;touch-action:none}
+body{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+button,a,select,input,.screen{touch-action:manipulation}
+#touch,#joy,.tbtn{touch-action:none}
 [hidden]{display:none!important}
 button{font:inherit;color:inherit}
 #app{position:fixed;inset:0}
 #stage{position:absolute;inset:0}
 #stage canvas{display:block;width:100%;height:100%}
+#vignette{position:absolute;inset:0;pointer-events:none;z-index:2;background:radial-gradient(125% 95% at 50% 45%,rgba(0,0,0,0) 58%,rgba(14,6,22,.34) 100%)}
 #divider{position:absolute;top:0;bottom:0;left:50%;width:4px;margin-left:-2px;background:linear-gradient(var(--sky),var(--rose));box-shadow:0 0 18px rgba(255,111,156,.55);pointer-events:none;z-index:3}
 
 /* ---------- shared bits ---------- */
@@ -100,6 +103,9 @@ button{font:inherit;color:inherit}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .seg button{border:0;background:transparent;padding:8px 12px;cursor:pointer;font-weight:700}
 .seg button.on{background:rgba(255,207,110,.2);color:var(--gold)}
+.seg button[disabled]{opacity:.45;cursor:not-allowed}
+.set-row.wardrobe{flex-wrap:wrap}
+.set-row.wardrobe .seg{flex-wrap:wrap;max-width:100%}
 
 /* online */
 .code{font-size:clamp(40px,8vw,64px);font-weight:800;letter-spacing:.12em;color:var(--gold);font-variant-numeric:tabular-nums}
@@ -234,6 +240,10 @@ button{font:inherit;color:inherit}
 .stat{background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
 .stat b{display:block;font-size:var(--s-lg);font-variant-numeric:tabular-nums}
 .stat span{font-size:var(--s-xs);color:var(--muted)}
+.done-shot{margin:2px auto 4px;background:#fbf6f0;padding:8px 8px 6px;border-radius:6px;box-shadow:0 14px 34px rgba(0,0,0,.45);transform:rotate(-1.6deg);width:min(300px,70%);display:flex;flex-direction:column;gap:4px}
+.done-shot img{width:100%;border-radius:3px;display:block}
+.done-shot span{font-family:var(--f-script);font-size:20px;color:#b8325f;text-align:center;line-height:1.1}
+.polaroid .ph-tag{position:absolute;left:6px;bottom:6px;background:rgba(20,8,28,.7);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;letter-spacing:.06em}
 .quote{font-size:var(--s-md);line-height:1.5;color:var(--cream);border-left:3px solid var(--rose);padding-left:12px;margin:0}
 #scr-ending{align-items:center;justify-content:center;text-align:center;background:linear-gradient(180deg,rgba(14,6,20,0) 30%,rgba(14,6,20,.85))}
 .credits{display:flex;flex-direction:column;gap:10px;align-items:center;max-width:700px;margin-top:auto;background:rgba(14,6,20,.62);border:1px solid var(--line);border-radius:24px;padding:18px 22px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
@@ -258,7 +268,37 @@ button{font:inherit;color:inherit}
 #fps{position:absolute;left:8px;bottom:8px;z-index:50;font:12px monospace;color:#0f0;background:rgba(0,0,0,.5);padding:2px 6px}
 
 body.touch .pchips{display:none}
-body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
+/* mission pill: tap to open; opens by itself for a moment when an objective is done */
+#hud-mission{pointer-events:auto;cursor:pointer;-webkit-user-select:none}
+#hud-mission .mt{display:flex;gap:10px;justify-content:space-between;align-items:center}
+#hud-mission .mt::after{content:"";width:8px;height:8px;border-right:2px solid var(--gold);border-bottom:2px solid var(--gold);transform:rotate(45deg) translateY(-3px);flex:0 0 8px;transition:transform .2s}
+#hud-mission.open .mt::after,#hud-mission.peek .mt::after{transform:rotate(-135deg) translateY(-1px)}
+#hud-sum{color:var(--cream);font-variant-numeric:tabular-nums;margin-left:auto}
+#hud-mission:not(.open):not(.peek) ul{display:none}
+#subtitle{pointer-events:auto;cursor:pointer}
+body.cine #hud-mission,body.cine .hud-left{opacity:0;transition:opacity .4s}
+.lines-box{border:1px solid var(--line);border-radius:14px;padding:8px 12px}
+#hud-net{color:var(--gold)}
+#hud-net .spin{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lines-box summary{cursor:pointer;font-weight:700}
+.lines-box ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow:auto;font-size:var(--s-sm);line-height:1.4}
+.toast{pointer-events:auto;cursor:pointer}
+.ready-row{position:sticky;bottom:0;padding:8px 0;z-index:2}
+#scr-story .ready-row{background:rgba(14,6,20,.82);border-radius:16px;padding:8px 10px;width:max-content;max-width:100%}
+/* phones: hearts in a row, one notification at a time at the top, lines at the bottom between the controls */
+body.touch .hud-left{flex-direction:row;flex-wrap:wrap}
+body.touch #hud-mission{max-width:min(380px,50vw)}
+body.touch #hud-mt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#hud-sum{white-space:nowrap}
+body.touch #toasts{left:50%;right:auto;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 56px);align-items:center;width:min(420px,calc(100vw - 32px))}
+body.touch .toast{max-width:100%;padding:8px 12px}
+body.touch .toast .t2{font-size:22px}
+body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);max-width:calc(100vw - 380px - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px));font-size:var(--s-sm);padding:7px 12px}
+@media (orientation:portrait){
+  body.touch #subtitle{bottom:calc(env(safe-area-inset-bottom,0px) + 200px);max-width:calc(100vw - 28px)}
+  body.touch #hud-mission{max-width:calc(100vw - 190px)}
+}
 @media (max-height:520px){
   .story .yr{font-size:64px}
   .story .ttl{font-size:40px}
@@ -268,7 +308,29 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
   #hud-mission ul{font-size:var(--s-xs)}
   .chip{font-size:var(--s-xs);padding:3px 10px}
   #subtitle{font-size:var(--s-sm);padding:6px 12px}
-  body.touch #subtitle{top:calc(env(safe-area-inset-top,0px) + 132px)}
+  #cinema{top:6%}
+  #cinema-t{font-size:38px}
+  #cinema-s{font-size:var(--s-sm);margin-top:4px}
+  .story .yr{font-size:46px}
+  .story .ttl{font-size:34px}
+  .story .lines{font-size:13px;line-height:1.4}
+  .story .mission{font-size:13px}
+  .title-wrap{gap:8px;margin-bottom:0;max-width:440px}
+  .title-name{font-size:46px}
+  .title-ar{font-size:18px;margin-top:0}
+  .title-tag{display:none}
+  .btn{min-height:40px;padding:7px 12px;font-size:var(--s-sm)}
+  .btn .sub{display:none}
+  .btn .ico{width:28px;height:28px;flex-basis:28px}
+  .title-links{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .title-wrap{max-width:600px}
+  #scr-title .stack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .page{padding-top:40px;gap:12px}
+  .big-done{font-size:40px}
+  .done-shot{width:min(200px,40%)}
+  .center-wrap.panel{padding:14px;gap:8px}
+  .credits .h-script{font-size:44px}
+  .credits p{font-size:var(--s-sm)}
   .tbtns{grid-template-columns:repeat(2,62px);grid-template-rows:repeat(2,62px);gap:10px}
   .tbtn{width:62px;height:62px}
   #joy{width:120px;height:120px}
@@ -291,6 +353,7 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
 <body>
 <div id="app">
   <div id="stage"></div>
+  <div id="vignette"></div>
   <div id="divider" hidden></div>
 
   <!-- ===== HUD ===== -->
@@ -301,9 +364,10 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
         <div class="chip" title="Memories"><svg viewBox="0 0 24 24" fill="none" stroke="#ffcf6e" stroke-width="2.2" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><rect x="7" y="6" width="10" height="9" fill="#ffcf6e" stroke="none"/></svg><span id="hud-mems">0 / 0</span></div>
         <div class="chip" id="hud-counter" hidden></div>
       </div>
-      <div id="hud-mission"><div class="mt" id="hud-mt">Mission</div><ul id="hud-obj"></ul></div>
+      <div id="hud-mission" role="button" aria-label="Show or hide the mission"><div class="mt"><span id="hud-mt">Mission</span><span id="hud-sum"></span></div><ul id="hud-obj"></ul></div>
       <div class="hud-right">
         <button id="btn-pause" aria-label="Pause"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></button>
+        <div class="chip" id="hud-net" hidden><i class="spin"></i>Reconnecting…</div>
         <div class="chip" id="hud-meter" hidden><div style="width:100%"><div id="hud-meter-l">Vibe</div><div class="meter"><i id="hud-meter-bar"></i></div></div></div>
       </div>
     </div>
@@ -434,7 +498,7 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
       <div class="cols">
         <div class="panel"><h3 class="tag-m">Mohamed · the big guy</h3><ul><li><b>Strong:</b> pushes heavy boxes and furniture.</li><li><b>Heavy:</b> only he can press the big gold buttons.</li><li><b>Toss (Power near Mariem):</b> throws her up to high ledges.</li><li><b>Ground Slam (Jump, then Power):</b> smashes cracked blocks.</li><li>Mariem can ride on his shoulders. Literally.</li></ul></div>
         <div class="panel"><h3 class="tag-f">Mariem · the little kitten</h3><ul><li><b>Kitten Leap:</b> jump again in mid-air.</li><li><b>Kitten Dash (Power):</b> zips across wide gaps, even in the air.</li><li><b>Small:</b> fits through tunnels he never will.</li><li>Light on her feet: faster than him, too.</li></ul></div>
-        <div class="panel"><h3>Together</h3><ul><li>Pink buttons open things while someone stands on them.</li><li>Collect hearts and find memories hidden in every chapter.</li><li>Finish a chapter by standing in the glowing heart zone, both of you.</li><li><b>Love (Q)</b> next to each other: hug.</li><li>Stuck? Pause → Regroup or Skip chapter.</li></ul></div>
+        <div class="panel"><h3>Together</h3><ul><li>Pink buttons open things while someone stands on them.</li><li>Collect hearts and find memories hidden in every chapter.</li><li>Finish a chapter by standing in the glowing heart zone, both of you.</li><li><b>Love (Q)</b> next to each other: hug.</li><li>Stuck? Pause → Regroup or Skip chapter.</li><li>Tap the mission at the top to open or close it. Tap a line of dialogue to move on.</li><li>Pause → <b>Hide instruction signs</b> once you know the moves, and <b>Recent lines</b> to read anything you missed.</li></ul></div>
         <div class="panel"><h3>Controls</h3><p><b>Player 1:</b> <span class="kbd">WASD</span> move, <span class="kbd">Space</span> jump, <span class="kbd">E</span> power, <span class="kbd">Q</span> love.<br><b>Player 2:</b> <span class="kbd">Arrows</span> move, <span class="kbd">Enter</span> or <span class="kbd">.</span> jump, <span class="kbd">R-Shift</span> or <span class="kbd">/</span> power, <span class="kbd">,</span> love. Numpad <span class="kbd">0</span><span class="kbd">1</span><span class="kbd">2</span> work too.<br><b>Solo:</b> <span class="kbd">Tab</span> switches character, <span class="kbd">C</span> calls your partner to you.<br><b>Gamepad:</b> stick, <span class="kbd">A</span> jump, <span class="kbd">X</span>/<span class="kbd">B</span> power, <span class="kbd">Y</span> love, <span class="kbd">Start</span> pause.<br><b>Pause:</b> <span class="kbd">Esc</span> or <span class="kbd">P</span>.</p></div>
       </div>
     </div>
@@ -449,8 +513,8 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
         <div class="set-row"><label for="set-music">Music</label><input type="range" id="set-music" min="0" max="1" step="0.05"></div>
         <div class="set-row"><label for="set-sfx">Sound effects</label><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
         <div class="set-row"><label>Graphics</label><div class="seg" id="q-seg"><button data-q="low">Light</button><button data-q="high">Pretty</button></div></div>
-        <div class="set-row"><label>Mohamed's outfit</label><div class="seg" id="o-seg-m"><button data-o="0">Evening</button><button data-o="1">Café date</button></div></div>
-        <div class="set-row"><label>Mariem's outfit</label><div class="seg" id="o-seg-f"><button data-o="0">Evening</button><button data-o="1">Café date</button></div></div>
+        <div class="set-row wardrobe"><div><label>Mohamed's outfit</label><div class="muted" style="font-size:var(--s-xs)">Finish chapters to unlock more.</div></div><div class="seg" id="o-seg-m"></div></div>
+        <div class="set-row wardrobe"><label>Mariem's outfit</label><div class="seg" id="o-seg-f"></div></div>
         <div class="set-row"><div><label for="song-file">Our song</label><div class="muted" style="font-size:var(--s-xs)">Pick an MP3 (a Suno track works great). It replaces the game music on this device.</div></div><div class="row"><input type="file" id="song-file" accept="audio/*" hidden><button class="btn small" data-act="pick-song">Choose song</button><button class="btn small" data-act="clear-song" id="clear-song" hidden>Remove</button></div></div>
         <div class="set-row"><div><label>Story outfits</label><div class="muted" style="font-size:var(--s-xs)">Some chapters dress you for the moment: school uniforms, the white coat, the engagement, the wedding.</div></div></div>
         <div class="set-row"><label>Progress</label><button class="btn small" data-act="reset-progress" id="reset-btn">Reset progress</button></div>
@@ -488,10 +552,12 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
       <p class="muted" id="pause-note" style="margin:0"></p>
       <button class="btn primary" data-act="resume">Resume</button>
       <button class="btn" data-act="regroup">Regroup at last checkpoint</button>
+      <button class="btn" data-act="toggle-hints" id="hints-btn">Hide instruction signs</button>
       <button class="btn" data-act="reset-crates">Reset boxes &amp; furniture</button>
       <button class="btn" data-act="restart">Restart chapter</button>
       <button class="btn" data-act="skip">Skip this chapter</button>
       <button class="btn" data-act="quit">Back to title</button>
+      <details class="lines-box"><summary>Recent lines</summary><ul id="pause-lines"></ul></details>
     </div>
   </section>
 
@@ -499,6 +565,7 @@ body.touch #subtitle{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 120px)}
   <section class="screen dim" id="scr-complete" hidden>
     <div class="center-wrap panel stack">
       <div class="eyebrow" id="done-ch">Chapter complete</div>
+      <figure class="done-shot" id="done-shot" hidden><img alt="The end of this chapter"><span></span></figure>
       <h2 class="h-script big-done" id="done-title">We did it</h2>
       <p class="quote" id="done-quote"></p>
       <div class="stats"><div class="stat"><b id="done-hearts">0/0</b><span>Hearts</span></div><div class="stat"><b id="done-mems">0/0</b><span>Memories</span></div><div class="stat"><b id="done-time">0:00</b><span>Time</span></div></div>

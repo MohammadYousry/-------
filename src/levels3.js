@@ -348,7 +348,7 @@
             lines: [[1, 'mohamed', 'I do. Since school, honestly.'], [3.4, 'mariem', 'I do. Forever.']],
             start: (g) => { const mo = g.player('mohamed'), ma = g.player('mariem'); mo.place(new THREE.Vector3(4.3, 0.05, -0.6)); ma.place(new THREE.Vector3(5.7, 0.05, -0.6)); mo.yaw = Math.PI / 2; ma.yaw = -Math.PI / 2; mo.model.play('hug', 3); ma.model.play('hug', 3); g.fireworks(new THREE.Vector3(5, 9, -8), 6); g.fx.emit('confetti', new THREE.Vector3(5, 4, -0.6), { n: 120, w: 6 }); } });
         }, { both: true });
-        L.spring(12.6, 0, 0, { power: 22 });
+        L.spring(12.6, 0, 0, { power: 22, vx: 6.4 });
         L.sign('Spring!', 12.6, 2.3, -2.4, { h: 0.3 });
         // 2: Paris
         isle(17.8, 36, 3);

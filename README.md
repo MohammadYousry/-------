@@ -71,7 +71,9 @@ The ending carries a dedication to their children, in English and Egyptian Arabi
 - **Our album:** every chapter hides memories. Unlock them, then add your own photos in **Our album**. Photos stay on the device (they're never uploaded) and also appear in the 3D photo frames inside the game.
 - **Our song:** **Settings → Our song** plays any MP3 instead of the built-in music.
 - **Outfits:** chapters dress you for the moment (school uniforms, the white coat, suit and dress, summer clothes, the wedding). Elsewhere, **Settings** picks between *Evening* and *Café date*.
-- Progress saves automatically on each device.
+- **Chapter photos:** the end of every chapter is captured and shown on the "chapter complete" card and in the album, until you add your own photo there.
+- **Less text on screen:** tap the mission panel to open or close it, tap a line of dialogue to move on, and in the pause menu hide the instruction signs or reread recent lines.
+- Progress saves automatically on each device. An online game survives a locked screen, a call or a page reload: the same room and chapter come back by themselves.
 
 ### Suno: our theme song
 

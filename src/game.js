@@ -3,6 +3,7 @@
   'use strict';
   const T = THREE, G = MM.G, I = MM.Input;
   const STEP = 1 / 120;
+  const SESSION_KEY = 'mm-online-session', SESSION_MAX = 20 * 60 * 1000;
   const other = (w) => (w === 'mohamed' ? 'mariem' : 'mohamed');
 
   class Game {
@@ -37,6 +38,7 @@
     applyQuality() {
       this.quality = MM.save.settings.quality;
       const pr = Math.min(window.devicePixelRatio || 1, this.quality === 'high' ? 2 : 1.25);
+      this.maxPR = pr; this.curPR = pr; this.perf = { t: 0, frames: 0, slow: 0, fast: 0 };
       this.renderer.setPixelRatio(pr);
       this.renderer.shadowMap.enabled = this.quality === 'high';
       this.resize();
@@ -57,8 +59,54 @@
       this.ui.fade(false);
       MM.Audio.playMusic('title');
       const m = location.search.match(/[?&]join=([A-Za-z0-9]{5})/);
-      if (m) { this.ui.show('online'); this.ui.online.reset(); document.getElementById('join-code').value = m[1].toUpperCase(); }
+      const sess = this.session();
+      if (sess && sess.code && Date.now() - sess.at < SESSION_MAX && this.net.available() && (!m || m[1].toUpperCase() === sess.code)) this.resumeOnline(sess);
+      else if (m) { this.ui.show('online'); this.ui.online.reset(); document.getElementById('join-code').value = m[1].toUpperCase(); }
+      // coming back to the tab: reconnect straight away and keep the screen awake again
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        if (this.mode === 'online') this.net.resume();
+        if (['play', 'paused', 'story', 'cinematic'].indexOf(this.state) >= 0) this.wake(true);
+      });
       requestAnimationFrame(this.loop);
+    }
+
+    /* ---- online session kept on this device, so a reload (or the phone closing the tab) can step back in ---- */
+    session(patch) {
+      try {
+        if (patch === null) { localStorage.removeItem(SESSION_KEY); return null; }
+        const cur = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null') || {};
+        if (patch) { Object.assign(cur, patch, { at: Date.now() }); localStorage.setItem(SESSION_KEY, JSON.stringify(cur)); }
+        return cur;
+      } catch (e) { return null; }
+    }
+    resumeOnline(sess) {
+      this.resuming = sess; this.resumeTries = 0;
+      const ui = this.ui;
+      ui.show('online'); ui.online.reset();
+      ui.online.msg('Reconnecting to room ' + sess.code + '…', 'ok');
+      if (sess.role === 'host') { this.onlineChar = sess.char || 'mohamed'; this.net.host((code) => this.onHosted(code), sess.code); }
+      else { document.getElementById('join-code').value = sess.code; if (sess.char) this.myChar = sess.char; this.net.join(sess.code, sess.seat); }
+    }
+    onHosted(code) {
+      const ui = this.ui;
+      ui.online.lobby(code, true); ui.online.msg('');
+      ui.online.status(this.resuming ? 'Room ' + code + ' is open again. Waiting for your partner…' : 'Share the code with your partner. Waiting for them to join…');
+      ui.online.roles(this.onlineChar, other(this.onlineChar), false);
+      this.lobbyCh = this.firstUnfinished(); ui.online.chapters(this.lobbyCh);
+      this.session({ role: 'host', code, char: this.onlineChar, ch: this.resuming ? this.resuming.ch : 0, cp: this.resuming ? this.resuming.cp : -1 });
+    }
+
+    // Keep the phone screen on while playing (a locked screen drops the connection).
+    async wake(on) {
+      try {
+        if (on) {
+          if (!this.wakeLock && navigator.wakeLock && document.visibilityState === 'visible') {
+            const lock = await navigator.wakeLock.request('screen');
+            this.wakeLock = lock; lock.addEventListener('release', () => { if (this.wakeLock === lock) this.wakeLock = null; });
+          }
+        } else if (this.wakeLock) { const l = this.wakeLock; this.wakeLock = null; l.release(); }
+      } catch (e) { this.wakeLock = null; }
     }
 
     clearStage() {
@@ -156,21 +204,19 @@
         case 'howto': ui.show('howto'); break;
         case 'timeline': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('timeline'); break;
         case 'settings': ui.show('settings'); break;
-        case 'back': if (ui.current() === 'online') { this.net.close(); ui.online.reset(); } ui.back(); break;
+        case 'back': if (ui.current() === 'online') { this.net.close(); ui.online.reset(); this.resuming = null; this.session(null); } ui.back(); break;
         case 'start-local': this.startGame('local', this.firstUnfinished()); break;
         case 'host':
           ui.online.msg('Creating a room…');
-          this.net.host((code) => {
-            ui.online.lobby(code, true); ui.online.msg('');
-            ui.online.status('Share the code with your partner. Waiting for them to join…');
-            ui.online.roles(this.onlineChar, other(this.onlineChar), false);
-            this.lobbyCh = this.firstUnfinished(); ui.online.chapters(this.lobbyCh);
-          });
+          this.resuming = null;
+          this.net.host((code) => this.onHosted(code));
           break;
         case 'join': {
           const code = document.getElementById('join-code').value;
+          this.resuming = null;
           ui.online.msg('Connecting…');
-          this.net.join(code);
+          const sess = this.session();
+          this.net.join(code, sess && sess.role === 'guest' && sess.code === String(code).toUpperCase() ? sess.seat : undefined);
           break;
         }
         case 'copy-code': {
@@ -189,6 +235,11 @@
           break;
         case 'resume': this.resume(); break;
         case 'regroup': this.regroup(); this.net.sendEv({ e: 'regroup' }); this.resume(); break;
+        case 'toggle-hints':
+          MM.save.settings.hints = MM.save.settings.hints === false; MM.writeSave();
+          if (this.level) this.level.setHints(MM.save.settings.hints !== false);
+          el.textContent = MM.save.settings.hints === false ? 'Show instruction signs' : 'Hide instruction signs';
+          break;
         case 'reset-crates': if (this.level) { this.level.resetCrates(); this.net.sendEv({ e: 'crates' }); } this.resume(); break;
         case 'restart': this.restartChapter(); break;
         case 'skip': this.resume(); this.onGoal(true); break;
@@ -225,6 +276,8 @@
         this.clearStage();
         this.chapter = def;
         this.chapterTime = 0;
+        this.ui.lines.length = 0;
+        if (this.mode === 'online') this.session({ ch: def.num, cp: this.resumeCp != null ? this.resumeCp : -1, char: this.myChar });
         this.ready = {};
         this.active = 0;
         this.storyT = 0;
@@ -250,7 +303,10 @@
           if (this.mode === 'solo') this.active = 0;
           if (this.mode === 'local') { const p1 = MM.save.lastLocal.p1; this.players.sort((a, b) => (a.who === p1 ? -1 : b.who === p1 ? 1 : 0)); }
           if (def.kids) this.spawnKids();
+          // stepping back in after a reload: start from the checkpoint we had reached
+          if (this.resumeCp != null && this.resumeCp >= 0) { this.level.setCheckpoint(this.resumeCp, true); this.players.forEach((p) => p.place(this.level.respawnPoint(p.who))); }
         }
+        this.resumeCp = null;
         MM.Audio.playMusic(def.music);
         this.state = 'story';
         const roles = def.type === 'drive' ? { mohamed: 'drives', mariem: 'radio' } : def.type === 'concert' ? { mohamed: 'blue notes', mariem: 'pink notes' } : null;
@@ -258,6 +314,8 @@
         this.ui.fade(false);
         I.capture = true;
         this.blur();
+        // a resumed online chapter skips the ready-up: the host starts it for both
+        if (this.autoGo) { this.autoGo = false; setTimeout(() => { if (this.state === 'story' && this.mode === 'online' && this.net.role === 'host') { this.net.send({ t: 'go', snap: this.level ? this.level.snapshot() : null }); this.go(); } }, 700); }
       }, 450);
     }
 
@@ -289,11 +347,13 @@
       this.ui.hud(true);
       this.ui.divider(this.split());
       this.ui.touch(I.isTouch() && this.mode !== 'local', this.mode === 'solo');
+      this.ui.resetMission();
       this.updateChips();
       this.blur();
       if (this.drive) { this.drive.running = true; this.ui.driveHud(this.drive); }
       else { this.ui.meter(null); this.ui.counterChip(null); document.getElementById('hud-counter').style.color = ''; }
       if (this.concert) { this.concert.running = true; this.ui.counts(null); }
+      this.wake(true);
       this.snapCams();
       MM.Audio.resumeCustom();
     }
@@ -313,6 +373,8 @@
 
     quitToTitle(send) {
       this.stopReconnect();
+      this.wake(false);
+      if (send !== false || this.mode !== 'online') this.session(null);
       if (this.mode === 'online') { if (send) this.net.send({ t: 'quit' }); setTimeout(() => this.net.close(), 200); }
       this.mode = null; this.chapter = null;
       I.capture = false;
@@ -329,6 +391,7 @@
     }
 
     showEnding() {
+      this.wake(false); this.session(null);
       I.capture = false;
       this.ui.hud(false); this.ui.divider(false); this.ui.touch(false);
       this.ui.fade(true);
@@ -371,7 +434,7 @@
       this.hudT = 0;
     }
     onBreak(id) { this.net.sendEv({ e: 'break', id }); }
-    onCheckpoint(i) { this.net.sendEv({ e: 'cp', i }); this.ui.toast('', 'Checkpoint', true); }
+    onCheckpoint(i) { this.net.sendEv({ e: 'cp', i }); this.ui.toast('', 'Checkpoint', true); if (this.mode === 'online') this.session({ cp: i }); }
     onFell() {}
     say(who, text, dur) { this.ui.say(who, text, dur); }
     shake(a) { this.shakeAmt = Math.max(this.shakeAmt, a); }
@@ -504,7 +567,10 @@
       const lines = f.lines || [];
       let said = 0;
       const sayLines = (t) => { while (said < lines.length && t >= lines[said][0]) { const ln = lines[said++]; this.say(ln[1], ln[2], ln[3]); } };
-      cine.dur = f.dur || (lines.length ? Math.max(4, lines[lines.length - 1][0] + 2.6) : 4);
+      // long enough to read every line (each one stays up at least its reading time)
+      let readEnd = 0;
+      lines.forEach((ln) => { readEnd = Math.max(readEnd, ln[0]) + Math.max(2.8, Math.min(9, 1.6 + ln[2].length * 0.07)); });
+      cine.dur = f.dur || (lines.length ? Math.max(4, readEnd + 0.4) : 4);
       if (f.title) this.ui.cinemaText(f.title, f.sub);
       const kind = f.kind || 'celebrate';
       if (kind === 'kneel') {
@@ -611,6 +677,19 @@
       MM.writeSave();
     }
 
+    // A photo of the chapter's ending: shown on the "chapter complete" card and in the album until you add your own.
+    captureShot(def) {
+      try {
+        this.render();
+        const src = this.renderer.domElement, w = 540, h = Math.round((540 * src.height) / src.width);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(src, 0, 0, w, h);
+        const url = cv.toDataURL('image/jpeg', 0.84);
+        this.lastShot = url;
+        MM.media.set('shot:' + def.id, url);
+      } catch (e) { this.lastShot = null; }
+    }
+
     finishCinematic() {
       const def = this.chapter, c = this.cine;
       if (c && c.extra) c.extra.forEach((o) => this.scene.remove(o));
@@ -621,7 +700,8 @@
       const hearts = L ? L.items.filter((i) => i.kind === 'heart' && i.taken).length + ' / ' + L.heartsTotal : this.drive ? this.drive.notesHit + ' notes' : this.concert ? this.concert.total().pct + '% on beat' : '-';
       const mems = L ? L.items.filter((i) => i.kind === 'memory' && i.taken).length + ' / ' + L.memTotal : '1 / 1';
       const host = this.mode !== 'online' || this.net.role === 'host';
-      this.ui.complete(def, { hearts, mems, time: this.chapterTime }, host, host ? '' : 'Waiting for your partner to continue…');
+      this.ui.complete(def, { hearts, mems, time: this.chapterTime, shot: this.lastShot }, host, host ? '' : 'Waiting for your partner to continue…');
+      this.lastShot = null;
     }
 
     /* ================= online ================= */
@@ -632,6 +712,13 @@
       const via = () => (N.route === 'relay' ? ' (through the relay: works on any network)' : '');
       N.on('connected', () => {
         if (this.reconnecting) { this.stopReconnect(); ui.toast('', 'Reconnected. Carry on!', true); }
+        if (N.role === 'guest') this.session({ role: 'guest', code: N.code, seat: N.seatId, char: this.myChar });
+        // the host reloaded mid-chapter: take both of you back to it, from the last checkpoint
+        if (N.role === 'host' && this.resuming && this.resuming.ch && !this.chapter) {
+          const r = this.resuming; this.resuming = null;
+          this.resumeCp = r.cp; this.autoGo = true; this.lobbyCh = r.ch;
+          setTimeout(() => this.startGame('online', r.ch), 600);
+        } else if (N.role === 'guest' && this.resuming) this.resuming = null;
         if (N.role === 'host') { ui.online.status('Your partner joined' + via() + '! Pick a chapter and press Start.', 'ok'); ui.online.canStart(true); this.sendLobby(); }
         else { ui.online.lobby(N.code, false); ui.online.msg(''); ui.online.status('Connected' + via() + '! Waiting for your partner to start…', 'ok'); N.send({ t: 'hello', ch: this.mode === 'online' && this.chapter ? this.chapter.num : 0 }); }
       });
@@ -642,15 +729,22 @@
           if (this.reconnecting) return;
           this.reconnecting = true;
           ui.toast('', 'Lost your partner for a moment. Reconnecting…', true);
-          if (N.role === 'guest') { setTimeout(() => { if (this.reconnecting) N.rejoin(); }, 400); this.rejoinT = setInterval(() => { if (this.reconnecting) N.rejoin(); }, 13000); }
-          this.reconnT = setTimeout(() => { if (!this.reconnecting) return; this.stopReconnect(); ui.toast('', 'Couldn\'t reconnect. Back to the title.', true); if (this.mode === 'online') this.quitToTitle(false); }, 60000);
+          ui.netChip(true);
+          if (N.role === 'guest') { setTimeout(() => { if (this.reconnecting) N.rejoin(); }, 400); this.rejoinT = setInterval(() => { if (this.reconnecting) N.rejoin(); }, 7000); }
+          // a few minutes is enough for a phone call, a locked screen or a network switch
+          this.reconnT = setTimeout(() => { if (!this.reconnecting) return; this.stopReconnect(); this.session(null); ui.toast('', 'Couldn\'t reconnect. Back to the title.', true); if (this.mode === 'online') this.quitToTitle(false); }, 180000);
         } else { ui.online.status('Your partner disconnected.', 'err'); ui.online.canStart(false); }
       });
-      N.on('error', (msg) => { if (this.reconnecting) return; if (ui.current() === 'online') { ui.online.msg(msg, 'err'); ui.online.status(msg, 'err'); } else ui.toast('', msg, true); });
+      N.on('error', (msg) => {
+        if (this.reconnecting) return;
+        // stepping back into a room after a reload: the other side may still be on its way, keep trying for a while
+        if (this.resuming && N.role !== 'host' && this.resumeTries++ < 20) { ui.online.msg('Waiting for room ' + this.resuming.code + '…', 'ok'); const r = this.resuming; setTimeout(() => { if (this.resuming === r && !N.connected) N.join(r.code, r.seat); }, 3000); return; }
+        if (ui.current() === 'online') { ui.online.msg(msg, 'err'); ui.online.status(msg, 'err'); } else ui.toast('', msg, true);
+      });
       N.on('msg', (d) => this.onNet(d));
     }
 
-    stopReconnect() { this.reconnecting = false; clearTimeout(this.reconnT); clearInterval(this.rejoinT); }
+    stopReconnect() { this.reconnecting = false; clearTimeout(this.reconnT); clearInterval(this.rejoinT); this.ui.netChip(false); }
 
     onNet(d) {
       const ui = this.ui;
@@ -677,10 +771,18 @@
           if (this.net.role === 'guest') { this.myChar = other(d.hostChar); this.mode = 'online'; this.ui.clearHistory(); this.startChapter(d.ch); }
           break;
         case 'ready': this.setReady(d.who, true, false); break;
-        case 'go': if (this.state === 'story') { this.go(); if (d.snap && this.level) this.level.applySnapshot(d.snap); } else this.pendingGo = d; break;
+        case 'go':
+          if (this.state === 'story') {
+            this.go();
+            if (d.snap && this.level) {
+              this.level.applySnapshot(d.snap);
+              if (d.snap.cp >= 0) this.players.forEach((p) => { if (p.local) p.place(this.level.respawnPoint(p.who)); });
+            }
+          } else this.pendingGo = d;
+          break;
         case 'goalReq': if (this.net.role === 'host' && (this.state === 'play' || this.state === 'paused')) this.onGoal(true); break;
         case 'ending': this.showEnding(); break;
-        case 'quit': if (this.mode === 'online') { ui.toast('', 'Your partner went back to the title.', true); this.quitToTitle(false); } break;
+        case 'quit': if (this.mode === 'online') { ui.toast('', 'Your partner went back to the title.', true); this.session(null); this.quitToTitle(false); } break;
         case 'st': this.applyRemoteState(d); break;
         case 'ev': this.onNetEvent(d); break;
         default: break;
@@ -702,7 +804,7 @@
       switch (d.e) {
         case 'take': if (L) L.take(d.id, d.who, true); break;
         case 'break': if (L) L.breakIt(d.id, true); break;
-        case 'cp': if (L) L.setCheckpoint(d.i, true); break;
+        case 'cp': if (L) { L.setCheckpoint(d.i, true); if (this.mode === 'online') this.session({ cp: d.i }); } break;
         case 'toss': { const me = this.player(this.myChar); if (me && me.local) me.receiveToss(d.fx, d.fz); break; }
         case 'hug': { const me = this.player(this.myChar), rp = this.player(other(this.myChar)); if (me && rp) { me.yaw = Math.atan2(rp.body.x - me.body.x, rp.body.z - me.body.z); me.model.play('hug', 1.3); this.fx.emit('hearts', me.headPos(), { n: 8 }); MM.Audio.sfx('love'); } break; }
         case 'fx': {
@@ -750,6 +852,7 @@
       try { this.update(dt); } catch (e) { console.error(e); }
       this.fx.update(dt);
       this.render();
+      this.adaptResolution(now);
       if (MM.DEBUG) this.debugFps(dt);
     }
 
@@ -773,6 +876,7 @@
         const c = this.cine;
         c.t += dt;
         if (c.tick) c.tick(c.t, dt);
+        if (!c.shot && c.t > Math.min(2.2, c.dur * 0.45)) { c.shot = true; this.captureShot(this.chapter); }
         if (this.mini) this.mini.update(dt, {}); else this.visuals(dt);
         this.cinematicCam(dt);
         if (c.t >= c.dur) this.finishCinematic();
@@ -1012,6 +1116,21 @@
         r.setViewport(0, 0, w, h);
         r.render(this.scene, cam);
       }
+    }
+
+    // Keep phones smooth: lower the render resolution a step when frames drop, raise it again when there's headroom.
+    adaptResolution(now) {
+      const P = this.perf;
+      if (!P || document.visibilityState !== 'visible') return;
+      if (!P.last) { P.last = now; return; }
+      const ft = now - P.last; P.last = now;
+      if (ft > 250) return; // a hiccup (tab switch, loading), not a trend
+      P.t += ft; P.frames++;
+      if (P.t < 2000) return;
+      const fps = (P.frames * 1000) / P.t; P.t = 0; P.frames = 0;
+      if (fps < 45 && this.curPR > 1) { P.slow++; P.fast = 0; if (P.slow >= 1) { this.curPR = Math.max(1, this.curPR - 0.25); this.renderer.setPixelRatio(this.curPR); this.resize(); P.slow = 0; } }
+      else if (fps > 57 && this.curPR < this.maxPR) { P.fast++; P.slow = 0; if (P.fast >= 4) { this.curPR = Math.min(this.maxPR, this.curPR + 0.25); this.renderer.setPixelRatio(this.curPR); this.resize(); P.fast = 0; } }
+      else { P.slow = 0; }
     }
 
     debugFps(dt) {

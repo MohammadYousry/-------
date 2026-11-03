@@ -12,6 +12,8 @@
     return !!L.sig[s];
   }
 
+  const HINT = /\b(push|toss|jump|power|press|stand|only|stay|ride|pick|both|button|slam|dash|climb|lift|hold|switch|move|crawl|steer|hop|take the bus|look both|squeeze|fits)\b/i;
+
   function boxMesh(x0, x1, y0, y1, z0, z1, mat) {
     const w = x1 - x0, h = y1 - y0, d = z1 - z0;
     let mats = mat;
@@ -40,14 +42,16 @@
       this.spawns = {}; this.goal = null;
       this.time = 0; this.killY = def.killY != null ? def.killY : -12;
       this.anim = []; // per-frame decorative animations
-      this.npcs = []; this.waters = []; this.paints = []; this.photos = [];
+      this.npcs = []; this.waters = []; this.paints = []; this.photos = []; this.hints = [];
       this.warmth = 1;
       this.heartsTotal = 0; this.memTotal = 0;
       this.rng = MM.rng(def.num * 977 + 13);
       this.M = this.makeMaterials(this.theme);
       this.setupEnvironment();
       def.build(this, MM.Props);
+      this.setHints(MM.save.settings.hints !== false);
       if (def.rain) this.makeRain();
+      this.makeAmbient();
       this.computeSignals();
       this.group.traverse((o) => { if (o.isMesh && o.userData.static !== false && !o.userData.dynamic) { o.updateMatrix(); } });
     }
@@ -63,7 +67,17 @@
       M.wall = { top: G.mat(th.wallTop || th.wall, { r: 0.85 }), side: G.mat(th.wall, { r: 0.9 }) };
       M.accent = G.mat(th.accent, { r: 0.6 });
       M.dark = G.mat(th.dark || '#2a2030', { r: 0.9 });
-      M.water = new T.MeshStandardMaterial({ color: th.water || '#2b6cb0', roughness: 0.15, metalness: 0.3, transparent: true, opacity: 0.85 });
+      M.water = new T.MeshStandardMaterial({ color: th.water || '#2b6cb0', roughness: 0.12, metalness: 0.35, transparent: true, opacity: 0.86 });
+      // gentle rolling waves, computed on the GPU
+      this.waterTime = { value: 0 };
+      M.water.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = this.waterTime;
+        sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', [
+          '#include <begin_vertex>',
+          'vec4 wwp = modelMatrix * vec4(position, 1.0);',
+          'transformed.z += sin(wwp.x * 0.42 + uTime * 1.3) * 0.08 + cos(wwp.z * 0.36 + uTime * 1.05) * 0.07 + sin((wwp.x + wwp.z) * 0.9 + uTime * 2.1) * 0.025;',
+        ].join('\n'));
+      };
       return M;
     }
 
@@ -87,8 +101,48 @@
       game.scene.add(this.group);
     }
 
+    // Floating light in the air: fireflies at night, petals in gardens and at home, dust motes in daylight.
+    makeAmbient() {
+      const key = this.def.theme;
+      const night = ['grind', 'nile', 'tech', 'cairo'], petals = ['garden', 'forever', 'home', 'family'];
+      if (this.def.rain) return;
+      const kind = key === 'yousr' ? 'stars' : night.indexOf(key) >= 0 ? 'fireflies' : petals.indexOf(key) >= 0 ? 'petals' : 'motes';
+      const n = kind === 'motes' ? 90 : 140;
+      const pos = new Float32Array(n * 3), base = new Float32Array(n * 3), r = MM.rng(this.def.num * 31 + 7);
+      for (let i = 0; i < n; i++) { base[i * 3] = r() * 32; base[i * 3 + 1] = r() * 9; base[i * 3 + 2] = r() * 16; }
+      const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+      const look = {
+        fireflies: { color: 0xffd98a, size: 0.32, add: true, opacity: 0.9 },
+        stars: { color: 0xfff1c4, size: 0.22, add: true, opacity: 0.8 },
+        petals: { color: 0xffb3cf, size: 0.2, add: false, opacity: 0.85 },
+        motes: { color: 0xffffff, size: 0.12, add: true, opacity: 0.45 },
+      }[kind];
+      const mat = new T.PointsMaterial({ map: G.tex(kind === 'petals' ? 'heart' : 'glow'), color: look.color, size: look.size, transparent: true, opacity: look.opacity, depthWrite: false, blending: look.add ? T.AdditiveBlending : T.NormalBlending, fog: false });
+      const pts = new T.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = 4;
+      this.add(pts);
+      this.ambient = { pts, pos, base, n, kind, seed: r() * 10 };
+    }
+    updateAmbient(t) {
+      const A = this.ambient, f = this.focusPos;
+      if (!A || !f) return;
+      const fall = A.kind === 'petals' ? 0.45 : 0, wob = A.kind === 'fireflies' ? 0.6 : 0.25;
+      for (let i = 0; i < A.n; i++) {
+        const o = i * 3, ph = i * 1.7 + A.seed;
+        const x = A.base[o] + Math.sin(t * 0.3 + ph) * wob + t * (A.kind === 'petals' ? 0.35 : 0.08);
+        const y = A.base[o + 1] + Math.sin(t * 0.5 + ph * 2) * wob * 0.6 - t * fall;
+        const z = A.base[o + 2] + Math.cos(t * 0.25 + ph) * wob;
+        A.pos[o] = f.x - 16 + (((x % 32) + 32) % 32);
+        A.pos[o + 1] = f.y - 1 + (((y % 9) + 9) % 9);
+        A.pos[o + 2] = f.z - 10 + (((z % 16) + 16) % 16);
+      }
+      A.pts.geometry.attributes.position.needsUpdate = true;
+      if (A.kind === 'fireflies') A.pts.material.opacity = 0.65 + Math.sin(t * 2.3) * 0.25;
+    }
+
     // follow the action with the shadow camera
     focus(x, y, z) {
+      this.focusPos = this.focusPos || new T.Vector3();
+      this.focusPos.set(x, y, z);
       this.sun.position.set(x - 12, y + 22, z + 14);
       this.sun.target.position.set(x, y, z);
       this.sky.position.set(x, 0, z);
@@ -115,7 +169,9 @@
     wall(x0, x1, y0, y1, z0, z1, o) { return this.box(x0, x1, y0, y1, z0, z1, (o && o.mat) || this.M.wall, o); }
     invisible(x0, x1, y0, y1, z0, z1, o) { return this.addSolid(Ph.solid(x0, x1, y0, y1, z0, z1, Object.assign({ noShadow: true }, o || {}))); }
     water(x0, x1, z0, z1, y) {
-      const m = new T.Mesh(new T.PlaneGeometry(x1 - x0, z1 - z0), this.M.water);
+      const sx = Math.min(90, Math.ceil((x1 - x0) / 2.5)), sz = Math.min(60, Math.ceil((z1 - z0) / 2.5));
+      const geo = new T.PlaneGeometry(x1 - x0, z1 - z0, sx, sz); geo.userData.own = true;
+      const m = new T.Mesh(geo, this.M.water);
       m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, y, (z0 + z1) / 2); m.receiveShadow = true;
       this.add(m); return m;
     }
@@ -146,13 +202,17 @@
       const p = G.textPlane(text, o.h || 0.36, { color: o.color || '#3b2340', bg: o.bg || 'rgba(255,248,240,0.94)', size: 64, pad: 22, border: o.border || null });
       p.position.set(x, y, z);
       if (o.ry) p.rotation.y = o.ry;
+      let post = null;
       if (o.post !== false && y > 0.8) {
-        const post = G.mesh(G.cyl(0.05, 0.05, y - p.userData.h / 2, 8), G.mat('#7a5a40'), x, (y - p.userData.h / 2) / 2, z - 0.05, this.group);
+        post = G.mesh(G.cyl(0.05, 0.05, y - p.userData.h / 2, 8), G.mat('#7a5a40'), x, (y - p.userData.h / 2) / 2, z - 0.05, this.group);
         post.castShadow = false;
       }
       this.add(p);
+      // instruction signs can be hidden from the pause menu once you know the moves
+      if (o.hint || (o.hint !== false && HINT.test(text))) this.hints.push([p, post]);
       return p;
     }
+    setHints(on) { this.hints.forEach(([p, post]) => { p.visible = on; if (post) post.visible = on; }); }
     text3d(text, x, y, z, o) {
       o = o || {};
       const p = G.textPlane(text, o.h || 0.8, { color: o.color || '#ffffff', stroke: o.stroke, glow: o.glow, size: 90, pad: 20, font: o.font, weight: o.weight });
@@ -371,7 +431,9 @@
       const pad = G.mesh(G.cyl(0.8, 0.8, 0.1, 20), G.mat(o.color || '#7ee0c3', { e: o.color || '#7ee0c3', ei: 0.3 }), 0, 0.25, 0, grp);
       this.add(grp);
       const solid = this.addSolid(Ph.solid(x - 0.8, x + 0.8, y, y + 0.3, z - 0.8, z + 0.8));
-      const obj = { type: 'spring', solid, pad, coil, power: o.power || 18, t: 1, x, z };
+      // vx/vz: a launch pad throws you in an arc toward the next platform instead of straight up,
+      // so nobody gets stuck bouncing in place
+      const obj = { type: 'spring', solid, pad, coil, power: o.power || 18, vx: o.vx || 0, vz: o.vz || 0, t: 1, x, z };
       this.objects.push(obj);
       return obj;
     }
@@ -795,7 +857,11 @@
         } else if (o.type === 'spring') {
           for (let k = 0; k < players.length; k++) {
             const p = players[k], b = p.body;
-            if (p.local && b.grounded && b.ground === o.solid) { b.vy = o.power; b.grounded = false; b.ground = null; o.t = 0; p.onSpring(); }
+            if (p.local && b.grounded && b.ground === o.solid) {
+              b.vy = o.power; b.grounded = false; b.ground = null; o.t = 0;
+              if (o.vx || o.vz) { b.vx = o.vx; b.vz = o.vz; p.carryT = 2; }
+              p.onSpring();
+            }
           }
           o.t = Math.min(1, o.t + dt * 3);
           o.pad.position.y = 0.25 - Math.sin(o.t * Math.PI) * 0.1;
@@ -897,6 +963,8 @@
         if (o.type === 'seesaw') { o.cool -= dt; o.tilt = MM.damp(o.tilt, 0, 3, dt); o.plank.rotation.z = o.tilt * 0.28; }
       }
       if (this.rain) this.updateRain(dt);
+      if (this.ambient) this.updateAmbient(t);
+      this.waterTime.value = t;
       for (let i = this.anim.length - 1; i >= 0; i--) if (this.anim[i](t, dt) === true) this.anim.splice(i, 1);
     }
 

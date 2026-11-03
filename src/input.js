@@ -140,9 +140,27 @@
 
   I.isTouch = function () { return ('ontouchstart' in window) || navigator.maxTouchPoints > 0; };
 
+  // iOS Safari ignores user-scalable=no, so a quick double tap on Jump zooms the page. Block zoom gestures ourselves.
+  function stopZoom() {
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+    document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+    let lastEnd = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = e.timeStamp || Date.now();
+      if (now - lastEnd < 400 && !(e.target.closest && e.target.closest('input,select,textarea'))) e.preventDefault();
+      lastEnd = now;
+    }, { passive: false });
+    document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  }
+
   function initTouch() {
+    stopZoom();
     const joy = document.getElementById('joy');
     if (!joy) return;
+    // the controls never scroll, select or zoom
+    [joy].concat(Array.from(document.querySelectorAll('.tbtn'))).forEach((el) => {
+      ['touchstart', 'touchend', 'touchmove'].forEach((t) => el.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+    });
     const knob = joy.querySelector('i');
     let id = null, cx = 0, cy = 0;
     const R = 55;

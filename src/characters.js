@@ -27,6 +27,26 @@
   MM.OUTFITS = OUTFITS;
 
   function m(color, o) { return G.mat(color, o); }
+  // Characters get their own copies of materials with a gentle fresnel rim light.
+  const rimCache = new Map();
+  const RIM = { value: new T.Color('#fff0f6') };
+  function rimmed(mat) {
+    if (!mat || !mat.isMeshStandardMaterial) return mat;
+    let r = rimCache.get(mat);
+    if (r) return r;
+    r = mat.clone();
+    r.onBeforeCompile = (sh) => {
+      sh.uniforms.uRim = RIM;
+      sh.fragmentShader = 'uniform vec3 uRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', [
+        '#include <emissivemap_fragment>',
+        'float rimF = 1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0);',
+        'totalEmissiveRadiance += uRim * pow(rimF, 2.6) * 0.32;',
+      ].join('\n'));
+    };
+    r.customProgramCacheKey = () => 'rim';
+    rimCache.set(mat, r);
+    return r;
+  }
   function add(parent, geo, mat, x, y, z) { return G.mesh(geo, mat, x, y, z, parent); }
 
   function buildFace(head, r, o) {
@@ -358,6 +378,7 @@
     // outfit: index (Settings choice) or a chapter outfit key ('school', 'coat', 'suit', 'dress', 'groom', 'bride', 'summer')
     create(id, outfit, opts) {
       const c = new Character(id, outfit, opts);
+      c.root.traverse((q) => { if (q.isMesh && !q.userData.noRim) q.material = rimmed(q.material); });
       if (id === 'npc') c.body.userData.base = (opts && opts.scale) || (opts && opts.gender === 'f' ? 1.18 : 0.94);
       return c;
     },
