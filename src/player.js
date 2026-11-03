@@ -76,6 +76,11 @@
       if (this.frozen) { b.vx = MM.damp(b.vx, 0, 10, dt); b.vz = MM.damp(b.vz, 0, 10, dt); return; }
       const mx = inp ? inp.mx : 0, mz = inp ? inp.mz : 0;
       const mag = Math.hypot(mx, mz);
+      // sitting (the couch at home): any move or jump stands up
+      if (this.seated) {
+        if (mag > 0.35 || (inp && inp.jump) || this.pose !== 'sit') { this.seated = false; if (this.pose === 'sit') this.pose = null; }
+        else { b.vx = 0; b.vz = 0; this.yaw = this.seatYaw; if (inp && inp.love) this.love(); return; }
+      }
       if (mag > 0.15) this.facing.set(mx / mag, mz / mag);
       if (this.dashT <= 0) {
         const spd = S.speed * (b.pushing ? 0.6 : 1) * this.speedMul * (this.swimming ? 0.7 : 1);
@@ -151,9 +156,11 @@
       this.game.fx.emit('sparkle', this.feet(), { n: 14, color: 0xffcf6e });
     }
 
+    sitDown(yaw) { this.seated = true; this.seatYaw = yaw || 0; this.yaw = this.seatYaw; this.pose = 'sit'; const b = this.body; b.vx = b.vz = 0; MM.Audio.sfx('pop'); }
+
     love() {
       this.cool = Math.max(this.cool, 0.2);
-      if (this.game.level) this.game.level.onLove(this);
+      if (this.game.level && this.game.level.onLove(this) === 'used') return;
       const p = this.partner();
       const near = p && Math.hypot(p.body.x - this.body.x, p.body.z - this.body.z) < 2.3 && Math.abs(p.body.y - this.body.y) < 1.5;
       if (near) this.game.hug(this, p);

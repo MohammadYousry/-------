@@ -81,7 +81,8 @@ window.MM = window.MM || {};
     unlocked: 1,
     chapters: {},
     memories: [],
-    settings: { music: 0.55, sfx: 0.8, quality: 'high', camera: 'split', outfit: { mohamed: 0, mariem: 0 } },
+    settings: { music: 0.55, sfx: 0.8, quality: 'high', camera: 'split', outfit: { mohamed: 0, mariem: 0 }, wedding: '' },
+    stats: {}, trophies: [], photos: [], letters: [],
     lastLocal: { p1: 'mohamed', p2: 'mariem' },
   });
   MM.save = defaultSave();

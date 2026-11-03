@@ -13,6 +13,8 @@
       r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
       r.shadowMap.type = T.PCFSoftShadowMap;
       document.getElementById('stage').appendChild(r.domElement);
+      this.post = MM.Post ? new MM.Post(r) : null;
+      this.photo = MM.Photo ? new MM.Photo(this) : null;
       this.scene = new T.Scene();
       this.cams = [new T.PerspectiveCamera(52, 1, 0.1, 1000), new T.PerspectiveCamera(52, 1, 0.1, 1000)];
       this.camSt = [{ pos: new T.Vector3(0, 6, 12), look: new T.Vector3() }, { pos: new T.Vector3(0, 6, 12), look: new T.Vector3() }];
@@ -113,6 +115,7 @@
       if (this.level) { this.level.dispose(); this.level = null; }
       if (this.drive) { this.drive.dispose(); this.drive = null; }
       if (this.concert) { this.concert.dispose(); this.concert = null; }
+      MM.Audio.ambience(null);
       this.kids.forEach((k) => this.scene.remove(k.m.root)); this.kids = [];
       this.cut = null; this.ui.cinemaText(null);
       if (this.menu) { this.scene.remove(this.menu.group); this.scene.remove(this.menu.sky); this.menu = null; }
@@ -125,6 +128,11 @@
 
     buildMenu(ending) {
       this.clearStage();
+      const party = !ending && MM.Extras.today();
+      if (party) {
+        const key = new Date().toDateString();
+        if (MM.save.stats.lastSpecial !== key) { MM.save.stats.lastSpecial = key; MM.Extras.bump('specialDays'); }
+      }
       const th = MM.THEMES.forever, sc = this.scene;
       sc.background = new T.Color(th.skyBottom);
       sc.fog = new T.Fog(th.fog, 30, 120);
@@ -145,6 +153,7 @@
       add(P.heartBalloon('#ff6f9c'), -2.4, 0, 1.2); add(P.heartBalloon('#ffcf6e'), -2.9, 0.2, 0.6);
       for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2; add(P.flower(['#ff6f9c', '#ffffff', '#ffcf6e'][i % 3]), Math.cos(a) * 6.2, 0, Math.sin(a) * 6.2); }
       if (ending) { add(P.weddingArch(), 0, 0, -1.6, 0, 1); add(P.cake(), 3.6, 0, -1.2, 0, 0.9); }
+      if (party) { add(P.cake(), 2.4, 0, -1.4, 0, 0.8); add(P.heartBalloon('#ffcf6e'), 2.2, 0.2, 1.6); add(P.heartBalloon('#7ee0c3'), -1.6, 0.1, 2.2); }
       else { const bench = new T.Group(); P.bx(bench, 2.4, 0.12, 0.7, '#b98a56', 0, 0.5, 0); P.bx(bench, 2.4, 0.6, 0.1, '#b98a56', 0, 0.85, -0.32); [-1, 1].forEach((s) => P.bx(bench, 0.1, 0.5, 0.6, '#5c4636', s * 1.1, 0.25, 0)); add(bench, 0, 0, -2.4); }
       for (let i = 0; i < 9; i++) { const c = P.cloud(1 + (i % 3) * 0.5); add(c, Math.cos(i * 0.7) * 16, -6 + (i % 4) * 2.5, Math.sin(i * 0.7) * 16 - 4); }
       const o = MM.save.settings.outfit;
@@ -158,7 +167,7 @@
         g.add(girl.root); g.add(boy.root); chars.push(girl, boy);
       }
       chars.forEach((c) => c.root.traverse((q) => { if (q.isMesh) q.castShadow = true; }));
-      this.menu = { group: g, sky, chars, t: 0, nextAct: 2, ending: !!ending, fwT: 1 };
+      this.menu = { group: g, sky, chars, t: 0, nextAct: 2, ending: !!ending, party: !!party, fwT: 1 };
     }
     refreshMenuChars() { if (this.menu && this.state === 'title') this.buildMenu(false); }
 
@@ -182,7 +191,7 @@
         if (Math.random() < 0.5) this.fx.emit('hearts', c.root.position.clone().add(new T.Vector3(0, 1.8, 0)), { n: 3 });
       }
       m.chars.forEach((c) => c.update(dt, { grounded: true, pose: 'idle-cute' }));
-      if (m.ending) {
+      if (m.ending || m.party) {
         m.fwT -= dt;
         if (m.fwT <= 0) { m.fwT = 0.7 + Math.random() * 0.9; this.fx.emit('firework', new T.Vector3((Math.random() - 0.5) * 16, 8 + Math.random() * 5, -6 - Math.random() * 6)); MM.Audio.sfx('firework'); }
       }
@@ -202,9 +211,19 @@
         case 'chapters-local': this.chapterMode = 'local'; ui.show('chapters'); break;
         case 'album': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('album'); break;
         case 'howto': ui.show('howto'); break;
+        case 'trophies': ui.show('trophies'); break;
+        case 'photos': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('photos'); break;
+        case 'home': this.chapterMode = 'solo'; this.startGame('solo', MM.HUB.num); break;
+        case 'letters': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('letters'); break;
+        case 'letter-send': this.sendLetter(); break;
+        case 'photo': if (this.photo) this.photo.enter(); break;
+        case 'photo-exit': if (this.photo) this.photo.exit(); break;
+        case 'photo-shoot': if (this.photo) this.photo.shoot(); break;
+        case 'photo-share': if (this.photo) this.photo.shareLast(); break;
         case 'timeline': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('timeline'); break;
         case 'settings': ui.show('settings'); break;
-        case 'back': if (ui.current() === 'online') { this.net.close(); ui.online.reset(); this.resuming = null; this.session(null); } ui.back(); break;
+        case 'back': if (ui.current() === 'letters' && this.level && this.state === 'paused') { this.resume(); break; }
+          if (ui.current() === 'online') { this.net.close(); ui.online.reset(); this.resuming = null; this.session(null); } ui.back(); break;
         case 'start-local': this.startGame('local', this.firstUnfinished()); break;
         case 'host':
           ui.online.msg('Creating a room…');
@@ -347,7 +366,7 @@
       this.ui.hud(true);
       this.ui.divider(this.split());
       this.ui.touch(I.isTouch() && this.mode !== 'local', this.mode === 'solo');
-      this.ui.resetMission();
+      this.ui.resetMission(this.chapter);
       this.updateChips();
       this.blur();
       if (this.drive) { this.drive.running = true; this.ui.driveHud(this.drive); }
@@ -356,6 +375,51 @@
       this.wake(true);
       this.snapCams();
       MM.Audio.resumeCustom();
+      if (this.chapter && this.chapter.hub) MM.Extras.bump('homeVisits');
+    }
+
+    /* ================= love letters ================= */
+    // The mailbox at home: pause the game and open the letters page on top of it.
+    openLetters() {
+      if (this.state !== 'play') return;
+      this.pause();
+      this.ui.show('letters');
+    }
+    sendLetter() {
+      const ta = document.getElementById('letter-text'), from = document.getElementById('letter-from').value === 'mariem' ? 'mariem' : 'mohamed';
+      const text = ta.value.trim().slice(0, 1200);
+      if (!text) { ta.focus(); return; }
+      const l = { id: 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), from, text, at: Date.now(), read: true };
+      MM.save.letters = MM.save.letters || [];
+      MM.save.letters.unshift(l);
+      if (MM.save.letters.length > 300) MM.save.letters.length = 300;
+      MM.save.settings.letterFrom = from;
+      MM.writeSave();
+      ta.value = '';
+      const sent = this.net.connected;
+      if (sent) this.net.send({ t: 'letter', l: Object.assign({}, l, { read: false }) });
+      MM.Audio.sfx('memory');
+      this.ui.toast('', sent ? 'Sent. It just arrived in your partner\'s mailbox 💌' : 'In the mailbox 💌 Online, it reaches your partner\'s phone the next time you play together.', true);
+      MM.Extras.bump('letters');
+      this.ui.renderLetters();
+    }
+    // A letter from the other phone (now, or one written while we were apart).
+    receiveLetters(list) {
+      MM.save.letters = MM.save.letters || [];
+      const have = new Set(MM.save.letters.map((l) => l.id));
+      const fresh = list.filter((l) => l && l.id && typeof l.text === 'string' && !have.has(String(l.id).slice(0, 40)) && have.add(String(l.id).slice(0, 40))).map((l) => ({ id: String(l.id).slice(0, 40), from: l.from === 'mariem' ? 'mariem' : 'mohamed', text: l.text.slice(0, 1200), at: +l.at || Date.now(), read: false }));
+      if (!fresh.length) return;
+      MM.save.letters = MM.save.letters.concat(fresh).sort((a, b) => b.at - a.at).slice(0, 300);
+      MM.writeSave();
+      const who = MM.CHARS[fresh[0].from].name;
+      this.ui.toast('Love letter', fresh.length > 1 ? fresh.length + ' new letters in the mailbox 💌' : 'A new letter from ' + who + ' 💌', false, true, 'Mailbox');
+      MM.Audio.sfx('memory');
+      if (this.ui.current() === 'letters') this.ui.renderLetters();
+    }
+    // When we connect, swap the letters written while apart (one message each, small enough for the relay).
+    syncLetters() {
+      const mine = (MM.save.letters || []).filter((l) => Date.now() - l.at < 45 * 86400000).slice(0, 25);
+      mine.forEach((l, i) => setTimeout(() => { if (this.net.connected) this.net.send({ t: 'letter', l: Object.assign({}, l, { read: false }) }); }, 1500 + i * 180));
     }
 
     restartChapter() {
@@ -455,6 +519,7 @@
       this.fx.emit('hearts', mid, { n: 12 });
       MM.Audio.sfx('love');
       this.stats.hugs++;
+      MM.Extras.bump('hugs');
       if (!b.local) this.net.sendEv({ e: 'hug' });
     }
 
@@ -638,6 +703,7 @@
     }
 
     onGoal(skip) {
+      if (this.chapter && this.chapter.hub) return;
       if (this.state !== 'play' && !skip) return;
       if (this.mode === 'online' && this.net.role !== 'host') { this.net.send({ t: 'goalReq' }); return; }
       if (this.mode === 'online') this.net.sendEv({ e: 'goal' });
@@ -672,9 +738,21 @@
       const rec = MM.save.chapters[def.id] || {};
       const hearts = this.level ? this.level.items.filter((i) => i.kind === 'heart' && i.taken).length : 0;
       rec.done = true; rec.hearts = Math.max(rec.hearts || 0, hearts); rec.time = rec.time ? Math.min(rec.time, this.chapterTime) : this.chapterTime;
+      if (this.level) {
+        const L = this.level, mems = L.items.filter((i) => i.kind === 'memory' && i.taken).length;
+        rec.heartsTotal = L.heartsTotal; rec.memTotal = L.memTotal; rec.mems = Math.max(rec.mems || 0, mems);
+        const falls = this.players.reduce((a, p) => a + p.stats.falls, 0);
+        if (!falls) MM.save.stats.nofall = (MM.save.stats.nofall || 0) + 1;
+      }
+      if (this.drive) { rec.notes = Math.max(rec.notes || 0, this.drive.notesHit); rec.popcorn = Math.max(rec.popcorn || 0, this.drive.popcorn || 0); }
+      if (this.concert) rec.pct = Math.max(rec.pct || 0, this.concert.total().pct);
+      rec.stars = Math.max(rec.stars || 0, MM.Extras.stars(def, rec));
       MM.save.chapters[def.id] = rec;
       MM.save.unlocked = Math.max(MM.save.unlocked, Math.min(MM.CHAPTERS.length, def.num + 1));
+      if (this.mode === 'local') MM.save.stats.localDone = (MM.save.stats.localDone || 0) + 1;
+      if (this.mode === 'online') MM.save.stats.onlineDone = (MM.save.stats.onlineDone || 0) + 1;
       MM.writeSave();
+      setTimeout(() => MM.Extras.check(), 2500);
     }
 
     // A photo of the chapter's ending: shown on the "chapter complete" card and in the album until you add your own.
@@ -712,6 +790,7 @@
       const via = () => (N.route === 'relay' ? ' (through the relay: works on any network)' : '');
       N.on('connected', () => {
         if (this.reconnecting) { this.stopReconnect(); ui.toast('', 'Reconnected. Carry on!', true); }
+        else this.syncLetters();
         if (N.role === 'guest') this.session({ role: 'guest', code: N.code, seat: N.seatId, char: this.myChar });
         // the host reloaded mid-chapter: take both of you back to it, from the last checkpoint
         if (N.role === 'host' && this.resuming && this.resuming.ch && !this.chapter) {
@@ -765,7 +844,7 @@
         case 'lobby':
           this.myChar = other(d.hostChar);
           ui.online.roles(this.myChar, d.hostChar, true);
-          ui.online.status('Connected! Your partner picked chapter ' + d.ch + (d.title ? ' · ' + d.title : '') + '. Waiting for them to start…', 'ok');
+          ui.online.status('Connected! Your partner picked ' + (d.ch === MM.HUB.num ? 'our home' : 'chapter ' + d.ch + (d.title ? ' · ' + d.title : '')) + '. Waiting for them to start…', 'ok');
           break;
         case 'start':
           if (this.net.role === 'guest') { this.myChar = other(d.hostChar); this.mode = 'online'; this.ui.clearHistory(); this.startChapter(d.ch); }
@@ -785,6 +864,7 @@
         case 'quit': if (this.mode === 'online') { ui.toast('', 'Your partner went back to the title.', true); this.session(null); this.quitToTitle(false); } break;
         case 'st': this.applyRemoteState(d); break;
         case 'ev': this.onNetEvent(d); break;
+        case 'letter': if (d.l) this.receiveLetters([d.l]); break;
         default: break;
       }
     }
@@ -864,6 +944,7 @@
         return;
       }
       if (st === 'story') { this.updateStory(dt); return; }
+      if (st === 'photo') { if (I.get('any').pause) this.photo.exit(); else this.photo.update(dt); return; }
       if (st === 'paused') {
         this.ui.menuNav(I.menuNav());
         if (I.get('any').pause) this.resume();
@@ -946,7 +1027,7 @@
       const L = this.level;
       if (!L) return;
       L.frame(dt);
-      this.players.forEach((p) => p.visual(dt, L.solids, this.state !== 'cinematic'));
+      this.players.forEach((p) => p.visual(dt, L.solids, this.state !== 'cinematic' && this.state !== 'photo'));
       if (this.kids.length) this.updateKids(dt);
       if (this.players.length) {
         const a = this.players[0].body, b = this.players[1].body;
@@ -1004,7 +1085,7 @@
       if (L) {
         const h = L.items.filter((i) => i.kind === 'heart' && i.taken).length;
         const m = L.items.filter((i) => i.kind === 'memory' && i.taken).length;
-        this.ui.counts(h, L.heartsTotal, m, L.memTotal);
+        if (def.hub) this.ui.counts(null); else this.ui.counts(h, L.heartsTotal, m, L.memTotal);
         if (def.money && L.counters[def.money]) this.ui.counterChip((def.money === 'revenue' ? 'Revenue ' : 'Savings ') + MM.fmtMoney(L.counters[def.money].n));
         if (def.warmth) this.ui.meter('Warmth · stay close to her', L.warmth, L.warmth < 0.3 ? 'linear-gradient(90deg,#9fc8ff,#5aa9ff)' : 'linear-gradient(90deg,#ffb36b,#ff6f9c)');
       } else if (D) {
@@ -1101,6 +1182,17 @@
     render() {
       const r = this.renderer, w = window.innerWidth, h = window.innerHeight;
       if (this.debugCam) { const c = this.cams[0]; c.clearViewOffset(); c.position.fromArray(this.debugCam[0]); c.lookAt(new T.Vector3().fromArray(this.debugCam[1])); c.aspect = w / h; c.updateProjectionMatrix(); r.setScissorTest(false); r.setViewport(0, 0, w, h); r.render(this.scene, c); return; }
+      // "Pretty" quality: HDR glow on lights and emissive things
+      const usePost = !!(this.post && this.post.ok && this.quality === 'high');
+      G.skyPost.value = usePost ? 1 : 0;
+      if (usePost) {
+        const views = [];
+        if (this.split() && (this.state === 'play' || this.state === 'paused')) {
+          for (let i = 0; i < 2; i++) { const cam = this.cams[i]; cam.aspect = (w / 2) / h; cam.updateProjectionMatrix(); views.push({ cam, x: i * w / 2, y: 0, w: w / 2, h }); }
+        } else { const cam = this.cams[0]; cam.aspect = w / h; cam.updateProjectionMatrix(); views.push({ cam, x: 0, y: 0, w, h }); }
+        if (this.post.render(this.scene, views) !== false) return;
+        G.skyPost.value = 0;
+      }
       if (this.split() && (this.state === 'play' || this.state === 'paused')) {
         r.setScissorTest(true);
         for (let i = 0; i < 2; i++) {

@@ -82,6 +82,7 @@
     A.applyVolumes();
     A.timer = setInterval(tick, 25);
     if (A.pendingSong) { const p = A.pendingSong; A.pendingSong = null; A.playMusic(p); }
+    if (A.pendingAmb) { const k = A.pendingAmb; A.pendingAmb = null; A.ambience(k); }
   };
 
   A.setVolumes = function (music, sfx) { A.vol.music = music; A.vol.sfx = sfx; A.applyVolumes(); };
@@ -91,6 +92,59 @@
     A.musicBus.gain.setTargetAtTime(A.custom ? 0 : A.vol.music * 0.7, t, 0.05);
     A.sfxBus.gain.setTargetAtTime(A.vol.sfx, t, 0.05);
     if (A.custom) A.custom.volume = MM.clamp(A.vol.music, 0, 1);
+  };
+
+  /* ---------- ambience: a quiet bed of sound under each chapter ---------- */
+  // kind: 'sea' | 'night' | 'birds' | 'rain' | 'city' | null
+  A.ambience = function (kind) {
+    if (A.amb && A.amb.kind === kind) return;
+    if (A.amb) { const old = A.amb; A.amb = null; clearInterval(old.timer); old.gain.gain.setTargetAtTime(0, A.ctx.currentTime, 0.4); setTimeout(() => old.nodes.forEach((n) => { try { n.stop ? n.stop() : 0; n.disconnect(); } catch (e) { /* ignore */ } }), 1800); }
+    if (!kind || !A.ctx) { A.pendingAmb = kind; return; }
+    const ctx = A.ctx, t = ctx.currentTime;
+    const gain = ctx.createGain(); gain.gain.value = 0; gain.connect(A.sfxBus);
+    gain.gain.setTargetAtTime(0.32, t, 1.2);
+    const nodes = [gain];
+    const noise = (type, freq, q, vol) => {
+      const s = ctx.createBufferSource(); s.buffer = A.noiseBuf; s.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; if (q) f.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = vol;
+      s.connect(f); f.connect(g); g.connect(gain); s.start(t, Math.random());
+      nodes.push(s, f, g);
+      return g;
+    };
+    const chirp = (f0, f1, dur, vol, when) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(f0, when); o.frequency.exponentialRampToValueAtTime(f1, when + dur);
+      g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vol, when + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+      o.connect(g); g.connect(gain); o.start(when); o.stop(when + dur + 0.05);
+    };
+    let timer = null;
+    if (kind === 'sea') {
+      const waves = noise('lowpass', 520, 0.6, 0.55);
+      // the swell: slow rise and fall of the surf
+      const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.12; lg.gain.value = 0.32;
+      lfo.connect(lg); lg.connect(waves.gain); lfo.start(); nodes.push(lfo, lg);
+      noise('highpass', 5200, 0.5, 0.025);
+      timer = setInterval(() => { if (Math.random() < 0.25) chirp(2600, 1800, 0.18, 0.02, ctx.currentTime); }, 2600);
+    } else if (kind === 'night') {
+      noise('lowpass', 300, 0.5, 0.18);
+      timer = setInterval(() => {
+        const now = ctx.currentTime;
+        for (let i = 0; i < 3; i++) chirp(4400, 4300, 0.05, 0.035, now + i * 0.09); // cricket
+      }, 900 + Math.random() * 500);
+    } else if (kind === 'birds') {
+      noise('lowpass', 700, 0.4, 0.1);
+      timer = setInterval(() => {
+        if (Math.random() < 0.55) { const now = ctx.currentTime, f = 2200 + Math.random() * 1600; chirp(f, f * 1.4, 0.09, 0.05, now); chirp(f * 1.2, f * 0.9, 0.12, 0.045, now + 0.13); if (Math.random() < 0.5) chirp(f, f * 1.5, 0.08, 0.04, now + 0.3); }
+      }, 1400);
+    } else if (kind === 'rain') {
+      noise('bandpass', 2600, 0.4, 0.5);
+      noise('lowpass', 400, 0.5, 0.22);
+    } else if (kind === 'city') {
+      noise('lowpass', 220, 0.4, 0.35);
+      timer = setInterval(() => { if (Math.random() < 0.18) { const now = ctx.currentTime; chirp(392, 392, 0.22, 0.012, now); chirp(494, 494, 0.22, 0.01, now); } }, 3000);
+    }
+    A.amb = { kind, gain, nodes, timer };
   };
 
   /* ---------- custom song ---------- */

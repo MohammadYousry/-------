@@ -7,7 +7,8 @@
   let current = null;
   const history = [];
 
-  const SCREENS = ['title', 'local', 'online', 'chapters', 'album', 'howto', 'settings', 'timeline', 'story', 'pause', 'complete', 'ending'];
+  const SCREENS = ['title', 'local', 'online', 'chapters', 'album', 'howto', 'settings', 'timeline', 'trophies', 'photos', 'letters', 'story', 'pause', 'complete', 'ending'];
+  const chLabel = (def) => (def.hub ? 'Our home' : 'Chapter ' + def.num);
   const chBg = (c) => c.card || 'linear-gradient(160deg,' + (MM.THEMES[c.theme] || MM.THEMES.school).skyTop + ',' + (MM.THEMES[c.theme] || MM.THEMES.school).accent + ')';
 
   U.init = function (g) {
@@ -30,6 +31,7 @@
       MM.save.settings.outfit[who] = /^\d+$/.test(v) ? +v : v; MM.writeSave(); segSel(id, 'o', v); game.refreshMenuChars();
     }));
     $('set-music').addEventListener('input', (e) => { MM.save.settings.music = +e.target.value; MM.Audio.setVolumes(MM.save.settings.music, MM.save.settings.sfx); MM.writeSave(); });
+    $('set-wedding').addEventListener('change', (e) => { MM.save.settings.wedding = e.target.value || ''; MM.writeSave(); });
     $('set-sfx').addEventListener('input', (e) => { MM.save.settings.sfx = +e.target.value; MM.Audio.setVolumes(MM.save.settings.music, MM.save.settings.sfx); MM.writeSave(); });
     $('song-file').addEventListener('change', async (e) => {
       const f = e.target.files && e.target.files[0];
@@ -75,7 +77,7 @@
   function segSel(id, key, val) { document.querySelectorAll('#' + id + ' button').forEach((b) => b.classList.toggle('on', b.dataset[key] === String(val))); }
   U.syncSettings = function () {
     const s = MM.save.settings;
-    $('set-music').value = s.music; $('set-sfx').value = s.sfx;
+    $('set-music').value = s.music; $('set-sfx').value = s.sfx; $('set-wedding').value = s.wedding || '';
     segSel('q-seg', 'q', s.quality); segSel('cam-seg', 'cam', s.camera);
     renderWardrobe();
     segSel('o-seg-m', 'o', s.outfit.mohamed); segSel('o-seg-f', 'o', s.outfit.mariem);
@@ -107,12 +109,16 @@
 
   /* ---------- screens ---------- */
   U.show = function (name, keepHistory) {
-    if (current && current !== name && keepHistory !== false && ['title', 'local', 'online', 'chapters', 'settings', 'howto', 'album', 'timeline'].indexOf(current) >= 0) history.push(current);
+    if (current && current !== name && keepHistory !== false && ['title', 'local', 'online', 'chapters', 'settings', 'howto', 'album', 'timeline', 'trophies', 'photos', 'letters'].indexOf(current) >= 0) history.push(current);
     SCREENS.forEach((s) => { const el = $('scr-' + s); if (el) el.hidden = s !== name; });
     current = name;
     if (name === 'chapters') renderChapters();
     if (name === 'album') renderAlbum();
     if (name === 'timeline') renderTimeline();
+    if (name === 'trophies') renderTrophies();
+    if (name === 'photos') renderGallery();
+    if (name === 'letters') renderLetters();
+    if (name === 'title') renderTitle();
     if (name === 'settings') U.syncSettings();
     if (name === 'local') renderWho();
     if (name === 'online') { renderWho(); }
@@ -132,13 +138,21 @@
     const grid = $('ch-grid');
     grid.innerHTML = '';
     $('ch-mode-l').textContent = game.chapterMode === 'solo' ? 'Chapters · solo' : 'Chapters · together';
+    // our home: always open, fills up as the story does
+    const home = document.createElement('button');
+    home.className = 'ch-card home-card';
+    home.style.setProperty('--ch-bg', 'linear-gradient(160deg,#ffcfb0,#ff9cb5 55%,#5aa9ff)');
+    home.innerHTML = '<span class="st">Free play · any time</span><span class="yr">Our home</span><span class="nm">Alexandria, by the sea</span><span class="st">Our couch, our photos on the wall, our trophies, the mailbox</span>';
+    home.addEventListener('click', () => { MM.Audio.init(); MM.Audio.sfx('click'); game.pickChapter(MM.HUB.num); });
+    grid.appendChild(home);
     MM.CHAPTERS.forEach((c) => {
       const locked = c.num > MM.save.unlocked;
       const rec = MM.save.chapters[c.id];
       const b = document.createElement('button');
       b.className = 'ch-card' + (locked ? ' locked' : '');
       b.style.setProperty('--ch-bg', chBg(c));
-      b.innerHTML = '<span class="st">Chapter ' + c.num + '</span><span class="yr">' + c.year + '</span><span class="nm">' + c.title + '</span><span class="st">' + (rec && rec.done ? 'Done · ' + rec.hearts + ' hearts · ' + MM.fmtTime(rec.time) : locked ? 'Finish the chapter before to unlock' : 'Not played yet') + '</span>';
+      const stars = MM.Extras.stars(c, rec);
+      b.innerHTML = '<span class="st">Chapter ' + c.num + (rec && rec.done ? ' <span class="stars">' + MM.Extras.starText(stars) + '</span>' : '') + '</span><span class="yr">' + c.year + '</span><span class="nm">' + c.title + '</span><span class="st">' + (rec && rec.done ? 'Done · ' + rec.hearts + (rec.heartsTotal ? ' / ' + rec.heartsTotal : '') + ' hearts · ' + MM.fmtTime(rec.time) : locked ? 'Finish the chapter before to unlock' : 'Not played yet') + '</span>';
       if (!locked) b.addEventListener('click', () => { MM.Audio.init(); MM.Audio.sfx('click'); game.pickChapter(c.num); });
       grid.appendChild(b);
     });
@@ -182,6 +196,89 @@
   }
   U.renderAlbum = renderAlbum;
 
+  /* ---------- title: today's celebration and the counters ---------- */
+  function renderTitle() {
+    const today = MM.Extras.today(), el = $('title-today');
+    el.hidden = !today;
+    if (today) { el.querySelector('b').textContent = today.icon + ' ' + today.title; el.querySelector('span').textContent = today.sub; }
+    $('title-counters').innerHTML = MM.Extras.counters().map((t) => '<span></span>').join('');
+    $('title-counters').querySelectorAll('span').forEach((s, i) => { s.textContent = MM.Extras.counters()[i]; });
+    const unread = (MM.save.letters || []).filter((l) => !l.read).length;
+    $('letters-link').textContent = unread ? 'Love letters 💌 ' + unread : 'Love letters';
+    $('letters-link').classList.toggle('primary', !!unread);
+  }
+  U.renderTitle = renderTitle;
+
+  /* ---------- our photos ---------- */
+  async function renderGallery() {
+    const wrap = $('gallery'); wrap.innerHTML = '';
+    const list = MM.save.photos || [];
+    if (!list.length) { wrap.innerHTML = '<p class="muted">No photos yet. Pause any chapter and choose 📷 Photo mode.</p>'; return; }
+    for (let i = 0; i < list.length; i++) {
+      const ph = list[i], url = await MM.media.get('gallery:' + ph.id);
+      if (!url) continue;
+      const ch = ph.ch && MM.CHAPTERS.find((c) => c.id === ph.ch);
+      const card = document.createElement('div');
+      card.className = 'polaroid'; card.style.setProperty('--tilt', ((i % 3) - 1) * 1.1 + 'deg');
+      card.innerHTML = '<div class="ph"><img alt=""></div><div class="yr"></div><div class="acts"><button data-g="share">Save / share</button><button data-g="del">Delete</button></div>';
+      card.querySelector('img').src = url;
+      card.querySelector('.yr').textContent = new Date(ph.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + (ch ? ' · ' + ch.title : '');
+      card.querySelector('[data-g="share"]').addEventListener('click', () => MM.sharePhoto(url, 'mohamed-mariem-' + ph.id + '.jpg'));
+      const del = card.querySelector('[data-g="del"]');
+      del.addEventListener('click', async () => {
+        if (!del.dataset.armed) { del.dataset.armed = '1'; del.textContent = 'Tap again'; setTimeout(() => { delete del.dataset.armed; del.textContent = 'Delete'; }, 3000); return; }
+        await MM.media.set('gallery:' + ph.id, null);
+        MM.save.photos = MM.save.photos.filter((q) => q.id !== ph.id); MM.writeSave(); renderGallery();
+      });
+      wrap.appendChild(card);
+    }
+  }
+
+  /* ---------- love letters ---------- */
+  function renderLetters() {
+    const list = MM.save.letters || [];
+    const sel = $('letter-from');
+    const def = game && game.mode === 'online' && game.myChar ? game.myChar : MM.save.settings.letterFrom || 'mohamed';
+    if (!sel.dataset.touched) sel.value = def;
+    const wrap = $('letters'); wrap.innerHTML = '';
+    if (!list.length) wrap.innerHTML = '<p class="muted">The mailbox is empty. Write the first letter.</p>';
+    list.forEach((l) => {
+      const c = MM.CHARS[l.from] || MM.CHARS.mohamed, to = MM.CHARS[l.from === 'mariem' ? 'mohamed' : 'mariem'];
+      const card = document.createElement('article');
+      card.className = 'letter ' + c.tag + (l.read ? '' : ' new');
+      card.innerHTML = '<header><b></b><span class="muted"></span></header><p></p><button class="btn small" data-l="del">Delete</button>';
+      card.querySelector('b').textContent = 'From ' + c.name + ' to ' + to.name + (l.read ? '' : '  · new');
+      card.querySelector('.muted').textContent = new Date(l.at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' });
+      card.querySelector('p').textContent = l.text;
+      const del = card.querySelector('[data-l="del"]');
+      del.addEventListener('click', () => {
+        if (!del.dataset.armed) { del.dataset.armed = '1'; del.textContent = 'Tap again'; setTimeout(() => { delete del.dataset.armed; del.textContent = 'Delete'; }, 3000); return; }
+        MM.save.letters = MM.save.letters.filter((q) => q.id !== l.id); MM.writeSave(); renderLetters();
+      });
+      wrap.appendChild(card);
+    });
+    // opening the mailbox reads everything in it
+    if (list.some((l) => !l.read)) { list.forEach((l) => { l.read = true; }); MM.writeSave(); }
+  }
+  U.renderLetters = renderLetters;
+
+  /* ---------- trophies ---------- */
+  function renderTrophies() {
+    MM.Extras.check(true);
+    const got = MM.save.trophies || [];
+    $('trophy-count').textContent = got.length + ' of ' + MM.Extras.TROPHIES.length + ' unlocked';
+    const wrap = $('trophies'); wrap.innerHTML = '';
+    MM.Extras.TROPHIES.forEach((t) => {
+      const has = got.indexOf(t.id) >= 0;
+      const d = document.createElement('div');
+      d.className = 'trophy' + (has ? ' got' : '');
+      d.innerHTML = '<span class="ti"></span><div><b></b><p></p></div>';
+      d.querySelector('.ti').textContent = has ? t.icon : '🔒';
+      d.querySelector('b').textContent = t.title; d.querySelector('p').textContent = t.text;
+      wrap.appendChild(d);
+    });
+  }
+
   /* ---------- our story: the real dates ---------- */
   function renderTimeline() {
     const wrap = $('timeline');
@@ -201,10 +298,10 @@
   let storyTimers = [];
   U.story = function (def, mode, roles) {
     storyTimers.forEach(clearTimeout); storyTimers = [];
-    $('st-ch').textContent = 'Chapter ' + def.num + ' of ' + MM.CHAPTERS.length;
+    $('st-ch').textContent = def.hub ? 'Our home · free play' : 'Chapter ' + def.num + ' of ' + MM.CHAPTERS.length;
     $('st-yr').textContent = def.year;
     $('st-title').textContent = def.title;
-    $('st-mission').textContent = 'Mission: ' + def.mission;
+    $('st-mission').textContent = (def.hub ? '' : 'Mission: ') + def.mission;
     const lines = $('st-lines'); lines.innerHTML = '';
     def.intro.forEach((t, i) => {
       const p = document.createElement('p'); p.textContent = t; lines.appendChild(p);
@@ -248,7 +345,7 @@
   // or for a few seconds whenever an objective is completed.
   let missionDone = -1, missionPeekT = null;
   U.objectives = function (def, rows) {
-    $('hud-mt').textContent = 'Chapter ' + def.num + ' · ' + def.title;
+    $('hud-mt').textContent = chLabel(def) + ' · ' + def.title;
     const ul = $('hud-obj');
     const html = rows.map((r) => '<li class="' + (r.done ? 'done' : '') + '"><span>' + r.label + '</span>' + (r.n != null ? '<span class="n">' + r.n + '</span>' : '') + '</li>').join('');
     if (ul._last !== html) { ul.innerHTML = html; ul._last = html; }
@@ -257,7 +354,7 @@
     if (missionDone >= 0 && done > missionDone) U.peekMission();
     missionDone = done;
   };
-  U.resetMission = function () { missionDone = -1; const m = $('hud-mission'); m.classList.toggle('open', !document.body.classList.contains('touch') && MM.save.settings.missionOpen !== false); };
+  U.resetMission = function (def) { missionDone = -1; const m = $('hud-mission'); m.classList.toggle('open', !(def && def.hub) && !document.body.classList.contains('touch') && MM.save.settings.missionOpen !== false); };
   U.peekMission = function () {
     const m = $('hud-mission');
     if (m.classList.contains('open')) return;
@@ -347,23 +444,24 @@
   };
 
   // Notifications: one at a time on phones, held back while a big caption is on screen, tap to dismiss.
-  U.toast = function (title, text, plain, big) {
+  U.toast = function (title, text, plain, big, label) {
     if (document.body.classList.contains('cine') && !U.toast.waiting) {
       U.toast.waiting = true;
       const t0 = Date.now();
-      const wait = setInterval(() => { if (!document.body.classList.contains('cine') || Date.now() - t0 > 12000) { clearInterval(wait); U.toast.waiting = false; U.toast(title, text, plain, big); } }, 400);
+      const wait = setInterval(() => { if (!document.body.classList.contains('cine') || Date.now() - t0 > 12000) { clearInterval(wait); U.toast.waiting = false; U.toast(title, text, plain, big, label); } }, 400);
       return;
     }
     const wrap = $('toasts');
     // phones show one at a time: wait for the current one (small notes behind a memory card can be dropped)
     if (document.body.classList.contains('touch') && wrap.querySelector('.toast:not(.out)')) {
       U.toast.queue = U.toast.queue || [];
-      if (U.toast.queue.length < 3 || big) U.toast.queue.push([title, text, plain, big]);
+      if (U.toast.queue.length < 3 || big) U.toast.queue.push([title, text, plain, big, label]);
       return;
     }
     const el = document.createElement('div');
     el.className = 'toast' + (plain ? ' plain' : '');
-    el.innerHTML = (plain ? '' : '<div class="t1">Memory found</div><div class="t2"></div>') + '<div class="t3"></div>';
+    el.innerHTML = (plain ? '' : '<div class="t1"></div><div class="t2"></div>') + '<div class="t3"></div>';
+    if (!plain) el.querySelector('.t1').textContent = label || 'Memory found';
     if (!plain) el.querySelector('.t2').textContent = title;
     el.querySelector('.t3').textContent = plain ? (title ? title + ' · ' : '') + text : text;
     wrap.appendChild(el);
@@ -381,8 +479,10 @@
   /* ---------- pause / complete ---------- */
   U.pause = function (def, online, isHost) {
     renderLines();
+    $('photo-btn').hidden = !(game.photo && game.level);
     $('hints-btn').textContent = MM.save.settings.hints === false ? 'Show instruction signs' : 'Hide instruction signs';
-    $('pause-ch').textContent = 'Chapter ' + def.num + ' · ' + def.title;
+    $('pause-ch').textContent = chLabel(def) + ' · ' + def.title;
+    document.querySelectorAll('#scr-pause [data-act="skip"]').forEach((b) => { b.hidden = !!def.hub; });
     $('pause-note').textContent = online ? (isHost ? 'Your partner keeps playing while this menu is open.' : 'Your partner keeps playing. Only the host can restart or skip.') : 'The game is paused.';
     document.querySelectorAll('#scr-pause [data-act="restart"],#scr-pause [data-act="skip"]').forEach((b) => { b.disabled = online && !isHost; });
     U.show('pause');
@@ -423,7 +523,8 @@
     },
     chapters(sel) {
       const s = $('lobby-ch');
-      s.innerHTML = MM.CHAPTERS.filter((c) => c.num <= MM.save.unlocked).map((c) => '<option value="' + c.num + '"' + (c.num === sel ? ' selected' : '') + '>' + c.num + '. ' + c.year + ' · ' + c.title + '</option>').join('');
+      s.innerHTML = MM.CHAPTERS.filter((c) => c.num <= MM.save.unlocked).map((c) => '<option value="' + c.num + '"' + (c.num === sel ? ' selected' : '') + '>' + c.num + '. ' + c.year + ' · ' + c.title + '</option>').join('')
+        + '<option value="' + MM.HUB.num + '"' + (sel === MM.HUB.num ? ' selected' : '') + '>Our home · free play</option>';
     },
     canStart(on) { $('online-go').disabled = !on; },
   };

@@ -99,6 +99,10 @@
       [[-30, -14], [-11, -32], [11, -32], [30, -14]].forEach(([a, b]) => { x.beginPath(); x.ellipse(a, b, 11, 14, 0, 0, 7); x.fill(); });
     } else if (name === 'note') {
       x.fillStyle = '#fff'; x.font = 'bold 110px serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('♪', 0, 4);
+    } else if (name === 'cloud') {
+      // a soft, lumpy cloud made of overlapping puffs
+      const puffs = [[-34, 8, 30], [-8, -6, 38], [22, 4, 32], [44, 12, 22], [-50, 16, 20], [6, 16, 30]];
+      puffs.forEach(([px, py, pr]) => { const g = x.createRadialGradient(px, py, 0, px, py, pr); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.65, 'rgba(255,255,255,.75)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.beginPath(); x.arc(px, py, pr, 0, 7); x.fill(); });
     } else if (name === 'glow') {
       const g = x.createRadialGradient(0, 0, 0, 0, 0, 64); g.addColorStop(0, 'rgba(255,255,255,.85)'); g.addColorStop(0.4, 'rgba(255,255,255,.25)'); g.addColorStop(1, 'rgba(255,255,255,0)');
       x.fillStyle = g; x.fillRect(-64, -64, 128, 128);
@@ -253,14 +257,17 @@
   };
 
   /* ---------- sky ---------- */
+  // The sky gradient was designed as it looks written straight to the screen; when the glow pass tone-maps
+  // the whole frame, uPost pre-darkens it so it keeps the same colours.
+  G.skyPost = { value: 0 };
   G.makeSky = function (top, bottom, opts) {
     opts = opts || {};
     const grp = new T.Group();
     const mat = new T.ShaderMaterial({
       side: T.BackSide, depthWrite: false, fog: false,
-      uniforms: { top: { value: new T.Color(top) }, bottom: { value: new T.Color(bottom) }, horizon: { value: new T.Color(opts.horizon || bottom) } },
+      uniforms: { top: { value: new T.Color(top) }, bottom: { value: new T.Color(bottom) }, horizon: { value: new T.Color(opts.horizon || bottom) }, uPost: G.skyPost },
       vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform vec3 horizon; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.0 ? mix(horizon, top, pow(clamp(h,0.0,1.0),0.6)) : mix(horizon, bottom, clamp(-h*3.0,0.0,1.0)); gl_FragColor = vec4(c,1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform vec3 horizon; uniform float uPost; varying vec3 vP; void main(){ float h = vP.y; vec3 c = h > 0.0 ? mix(horizon, top, pow(clamp(h,0.0,1.0),0.6)) : mix(horizon, bottom, clamp(-h*3.0,0.0,1.0)); if (uPost > 0.5) { c = pow(c, vec3(2.2)); c = max(mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, 1.45), 0.0) * 1.05; } gl_FragColor = vec4(c,1.0); }',
     });
     const sky = new T.Mesh(new T.SphereGeometry(450, 32, 16), mat);
     sky.renderOrder = -10;
@@ -275,6 +282,43 @@
       const pts = new T.Points(g, new T.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }));
       grp.add(pts);
     }
+    // daytime: a glowing sun low in the sky and slow clouds; night: stars that twinkle
+    if (opts.sun) {
+      const sun = new T.Sprite(new T.SpriteMaterial({ map: G.tex('glow'), color: new T.Color(opts.sun).multiplyScalar(1.6), transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false }));
+      sun.position.set(-210, 125, -300); sun.scale.setScalar(150); sun.renderOrder = -9; grp.add(sun);
+      const core = new T.Sprite(new T.SpriteMaterial({ map: G.tex('dust'), color: new T.Color('#fffaf0').multiplyScalar(2.2), transparent: true, depthWrite: false, blending: T.AdditiveBlending, fog: false }));
+      core.position.copy(sun.position); core.scale.setScalar(34); core.renderOrder = -9; grp.add(core);
+    }
+    if (opts.clouds) {
+      const ring = new T.Group(), r = MM.rng(77);
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + r() * 0.3, R = 260 + r() * 90;
+        const c = new T.Sprite(new T.SpriteMaterial({ map: G.tex('cloud'), color: opts.cloudColor || '#ffffff', transparent: true, opacity: 0.55 + r() * 0.35, depthWrite: false, fog: false }));
+        const s = 60 + r() * 70; c.scale.set(s * 1.8, s * 0.8, 1);
+        c.position.set(Math.cos(a) * R, 40 + r() * 90, Math.sin(a) * R); c.renderOrder = -8;
+        ring.add(c);
+      }
+      grp.add(ring);
+      grp.userData.clouds = ring;
+    }
+    if (opts.stars) {
+      const pts = grp.children.find((c) => c.isPoints);
+      if (pts) {
+        const n = pts.geometry.attributes.position.count, ph = new Float32Array(n), r = MM.rng(9);
+        for (let i = 0; i < n; i++) ph[i] = r() * 6.28;
+        pts.geometry.setAttribute('phase', new T.BufferAttribute(ph, 1));
+        const tw = { value: 0 };
+        pts.material.onBeforeCompile = (sh) => {
+          sh.uniforms.uTw = tw;
+          sh.vertexShader = 'uniform float uTw; attribute float phase;\n' + sh.vertexShader.replace('gl_PointSize = size;', 'gl_PointSize = size * (0.55 + 0.45 * sin(uTw * 1.7 + phase));');
+        };
+        grp.userData.twinkle = tw;
+      }
+    }
+    grp.userData.tick = (t) => {
+      if (grp.userData.clouds) grp.userData.clouds.rotation.y = t * 0.006;
+      if (grp.userData.twinkle) grp.userData.twinkle.value = t;
+    };
     grp.userData.follow = true;
     return grp;
   };

@@ -26,7 +26,8 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
   await page.waitForFunction(() => window.__MM && window.__MM.state === 'title', null, { timeout: 30000 });
   const n = await page.evaluate(() => MM.CHAPTERS.length);
   console.log('chapters:', n);
-  for (let c = 1; c <= n; c++) {
+  const list = Array.from({ length: n }, (_, i) => i + 1).concat([99]); // 99: our home
+  for (const c of list) {
     if (only.length && only.indexOf(c) < 0) continue;
     const before = errs.length;
     await page.evaluate((c) => window.__MM.startGame('solo', c), c);

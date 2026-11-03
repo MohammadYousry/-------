@@ -12,6 +12,8 @@
     return !!L.sig[s];
   }
 
+  // the sound under each kind of place
+  const AMBIENCE = { sea: 'sea', sharm: 'sea', sunset: 'sea', alex: 'city', miles: 'sea', nile: 'sea', yousr: 'rain', rain: 'rain', grind: 'night', tech: 'night', garden: 'birds', forever: 'birds', school: 'birds', physics: 'birds', home: 'birds', family: 'city', cairo: 'city', med: 'birds' };
   const HINT = /\b(push|toss|jump|power|press|stand|only|stay|ride|pick|both|button|slam|dash|climb|lift|hold|switch|move|crawl|steer|hop|take the bus|look both|squeeze|fits)\b/i;
 
   function boxMesh(x0, x1, y0, y1, z0, z1, mat) {
@@ -42,7 +44,7 @@
       this.spawns = {}; this.goal = null;
       this.time = 0; this.killY = def.killY != null ? def.killY : -12;
       this.anim = []; // per-frame decorative animations
-      this.npcs = []; this.waters = []; this.paints = []; this.photos = []; this.hints = [];
+      this.npcs = []; this.waters = []; this.paints = []; this.photos = []; this.hints = []; this.interacts = [];
       this.warmth = 1;
       this.heartsTotal = 0; this.memTotal = 0;
       this.rng = MM.rng(def.num * 977 + 13);
@@ -52,6 +54,7 @@
       this.setHints(MM.save.settings.hints !== false);
       if (def.rain) this.makeRain();
       this.makeAmbient();
+      MM.Audio.ambience(def.ambience !== undefined ? def.ambience : AMBIENCE[def.theme] || null);
       this.computeSignals();
       this.group.traverse((o) => { if (o.isMesh && o.userData.static !== false && !o.userData.dynamic) { o.updateMatrix(); } });
     }
@@ -85,7 +88,7 @@
       const th = this.theme, game = this.game;
       game.scene.background = new T.Color(th.skyBottom);
       game.scene.fog = new T.Fog(th.fog || th.skyBottom, th.fogNear || 40, th.fogFar || 140);
-      const sky = G.makeSky(th.skyTop, th.skyBottom, { horizon: th.horizon, stars: th.stars });
+      const sky = G.makeSky(th.skyTop, th.skyBottom, { horizon: th.horizon, stars: th.stars, sun: th.stars || this.def.rain ? null : th.sun, clouds: !th.stars && !this.def.rain && th.clouds !== false, cloudColor: th.cloudColor });
       this.sky = sky; game.scene.add(sky);
       this.hemi = new T.HemisphereLight(th.hemiSky || '#ffffff', th.hemiGround || '#6b5a70', th.hemi != null ? th.hemi : 1.0);
       this.group.add(this.hemi);
@@ -543,8 +546,14 @@
       this.photos.push(obj);
       return obj;
     }
+    // Something a player uses by standing next to it and pressing Love (the couch, the mailbox at home).
+    interact(x, z, y, r, fn) { const o = { x, z, y: y || 0, r, fn }; this.interacts.push(o); return o; }
     onLove(p) {
       const players = this.game.players;
+      for (let i = 0; i < this.interacts.length; i++) {
+        const it = this.interacts[i];
+        if (p.local && Math.hypot(p.body.x - it.x, p.body.z - it.z) < it.r && Math.abs(p.body.y - it.y) < 1.4 && it.fn(p) !== false) return 'used';
+      }
       for (let i = 0; i < this.photos.length; i++) {
         const ph = this.photos[i];
         if (ph.taken) continue;
@@ -964,6 +973,7 @@
       }
       if (this.rain) this.updateRain(dt);
       if (this.ambient) this.updateAmbient(t);
+      if (this.sky.userData.tick) this.sky.userData.tick(t);
       this.waterTime.value = t;
       for (let i = this.anim.length - 1; i >= 0; i--) if (this.anim[i](t, dt) === true) this.anim.splice(i, 1);
     }
