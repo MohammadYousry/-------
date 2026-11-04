@@ -115,7 +115,7 @@
       const rr = MM.rng(21);
       for (let x = -70; x < -16; x += 9) L.prop('alexBuilding', x, -16, -14, { args: [8, 18 + rr() * 12, ['#f1d9c4', '#e8c8b0', '#f4e6cf'][Math.floor(rr() * 3)], Math.floor(rr() * 50)] });
       for (let x = 66; x < 120; x += 9) L.prop('alexBuilding', x, -16, -30, { args: [8, 16 + rr() * 12, ['#f1d9c4', '#e8c8b0', '#f4e6cf'][Math.floor(rr() * 3)], Math.floor(rr() * 50)] });
-      if (night) L.prop('moon', 20, 34, -160, { args: [8] });
+      if (night) L.prop('moon', -30, 30, -160, { args: [8] });
       for (let i = 0; i < 4; i++) L.prop('cloud', -40 + i * 40 + rr() * 10, 14 + rr() * 10, -90 - rr() * 40, { args: [2 + rr() * 2], bob: 0.5 });
       L.talk(33, 'mariem', 'Our sea. Every single evening.');
       L.talk(35, 'mohamed', 'Every single evening.');
@@ -142,6 +142,19 @@
       L.box(3, 5, 0, 0.42, -0.6, 0.4, { top: G.mat('#8a5a3a'), side: G.mat('#6b4a3a') }); // coffee table
       L.prop('bookshelf', -0.6, 0, -4, { solid: true });
       L.prop('plant', 6.6, 0, -3.8); L.prop('plant', -5.2, 0, 3.6);
+      // the dance floor: a round rug, a record player, and Love to dance
+      const DS = (L.danceSpot = { x: 8.7, z: 1.4 });
+      const floorRug = new T.Mesh(new T.CircleGeometry(1.35, 40), G.mat('#f3d1dc', { r: 0.9 })); floorRug.rotation.x = -Math.PI / 2; floorRug.position.set(DS.x, 0.012, DS.z); floorRug.receiveShadow = true; L.add(floorRug);
+      const ringR = new T.Mesh(new T.RingGeometry(1.2, 1.3, 40), G.mat('#e6a5ae', { r: 0.8 })); ringR.rotation.x = -Math.PI / 2; ringR.position.set(DS.x, 0.016, DS.z); L.add(ringR);
+      const rp = new T.Group(); rp.position.set(11.1, 0, 2.7); L.add(rp);
+      P.bx(rp, 0.7, 0.7, 0.5, '#8a5a3a', 0, 0.35, 0); P.bx(rp, 0.62, 0.08, 0.44, '#3b2340', 0, 0.74, 0);
+      const disc = P.cy(rp, 0.19, 0.19, 0.02, '#141218', -0.06, 0.79, 0, { r: 0.3, m: 0.2 }); P.cy(rp, 0.05, 0.05, 0.022, '#ff6f9c', -0.06, 0.8, 0);
+      const horn = P.cy(rp, 0.02, 0.17, 0.32, '#d9b45a', 0.18, 1.0, -0.1, { m: 0.8, r: 0.3 }); horn.rotation.z = -0.7;
+      L.anim.push((t, dt) => { disc.rotation.y += dt * 3.5; });
+      L.invisible(10.75, 11.45, 0, 0.8, 2.45, 2.95);
+      const dl = G.textPlane('Dance floor · together, press Love', 0.2, { color: '#fff', bg: 'rgba(30,14,40,.78)', size: 56, pad: 10 });
+      dl.position.set(DS.x, 2.2, DS.z); L.add(dl); L.hints.push([dl, null]);
+      L.interact(DS.x, DS.z, 0, 1.5, (p) => L.game.homeTogether(p, DS, 'dance'));
       const sl = G.textPlane('Jump on the couch, press Love to sit', 0.2, { color: '#fff', bg: 'rgba(30,14,40,.78)', size: 56, pad: 10 });
       sl.position.set(4, 2.1, -1.9); L.add(sl); L.hints.push([sl, null]);
       // sitting: press Love while standing on the couch; move to stand up
@@ -192,7 +205,7 @@
       [1.0, 2.0, 3.0].forEach((y) => L.box(24.8, 31, y - 0.06, y, -4.5, -4.0, { top: G.mat('#f4efe7'), side: G.mat('#b98a56') }, { nosolid: true }));
       MM.Extras.TROPHIES.forEach((tr, i) => {
         if ((MM.save.trophies || []).indexOf(tr.id) < 0) return;
-        const c = cup(i % 5 === 4 ? '#e8e8f0' : '#ffcf6e'); c.position.set(25.3 + (i % 7) * 0.85, 1.0 + Math.floor(i / 7) * 1.0, -4.22); L.add(c);
+        const c = cup(i % 5 === 4 ? '#e8e8f0' : '#ffcf6e'); c.position.set(25.25 + (i % 8) * 0.76, 1.0 + Math.floor(i / 8) * 1.0, -4.22); L.add(c);
       });
       const tl = G.textPlane('Our trophies · ' + got + ' of ' + MM.Extras.TROPHIES.length, 0.24, { color: '#3b2340', bg: 'rgba(255,248,240,.92)', size: 56, pad: 10 });
       tl.position.set(27.9, 3.75, -4.42); L.add(tl);
@@ -203,6 +216,15 @@
       L.prop('plant', 33, 0, 3.6); L.prop('plant', 43, 0, 3.6, { args: [1.2] });
       if (done('sharm')) L.prop('beachUmbrella', 41.5, 0, 2.2, { args: ['#ff7a6b'] });
       if (done('cairo')) L.prop('tripod', 36, 0, 3, { ry: Math.PI });
+      // a telescope at the railing: make a wish together
+      const SS = (L.starSpot = { x: 38.6, z: -2.7 });
+      const tel = new T.Group(); tel.position.set(40.4, 0, -3.3); L.add(tel);
+      [-1, 0, 1].forEach((k) => { const lg = P.cy(tel, 0.025, 0.025, 1.1, '#3b2340', k * 0.18, 0.5, k === 0 ? -0.18 : 0.1); lg.rotation.set(k === 0 ? -0.3 : 0.15, 0, k * 0.3); });
+      const tube = P.cy(tel, 0.07, 0.1, 0.9, '#d9b45a', 0, 1.15, 0, { m: 0.8, r: 0.25 }); tube.rotation.x = -1.0;
+      L.invisible(40.1, 40.7, 0, 1.2, -3.6, -3.0);
+      const wl = G.textPlane('Make a wish · together, press Love', 0.2, { color: '#fff', bg: 'rgba(30,14,40,.78)', size: 56, pad: 10 });
+      wl.position.set(SS.x, 2.3, SS.z + 0.6); L.add(wl); L.hints.push([wl, null]);
+      L.interact(SS.x, SS.z, 0, 1.8, (p) => L.game.homeTogether(p, SS, 'stars'));
       if (done('anniversary')) L.prop('stringLights', 38, 0, -3.9, { args: [11, 3.4] });
       if (done('summer')) L.prop('yacht', 14, -14.2, -60, { ry: 0.3, s: 1.3, bob: 0.25 });
       if (done('exams')) L.prop('car', 30, -13.7, -8.5, { args: ['#e8e8f0'], ry: Math.PI / 2 });

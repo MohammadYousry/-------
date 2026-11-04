@@ -7,7 +7,21 @@ module.exports = async ({ ev, check, start, page }) => {
   });
   await start(99);
   let r = await ev(() => ({ hub: T.g.chapter.hub, title: T.g.chapter.title, kids: T.g.kids.length, goal: !!T.g.level.goal, frames: T.g.level.group.children.length, ints: T.g.level.interacts.length }));
-  check('Home builds as free play with the kids and no goal', r.hub && !r.goal && r.kids === 2 && r.ints === 2, r);
+  check('Home builds as free play with the kids and no goal', r.hub && !r.goal && r.kids === 2 && r.ints === 4, r);
+
+  // the first dance and the wish on the balcony (solo brings the partner over)
+  r = await ev(() => {
+    const g = T.g; g.state = 'play';
+    T.tp('mohamed', 8.4, 0, 1.4); T.run(0.05, { mohamed: { love: true } });
+    const dance = g.cut && g.cut.title;
+    for (let i = 0; i < 900 && g.cut; i++) g.simulate(1 / 60, false);
+    T.tp('mohamed', 38.6, 0, -2.4); T.run(0.05, { mohamed: { love: true } });
+    const wish = g.cut && g.cut.title;
+    for (let i = 0; i < 900 && g.cut; i++) g.simulate(1 / 60, false);
+    g.state = 'test';
+    return { dance, wish, dances: MM.save.stats.dances, wishes: MM.save.stats.wishes, pose: g.player('mohamed').pose };
+  });
+  check('First dance and a wish under the stars', r.dance === 'Our first dance' && r.wish === 'Make a wish' && r.dances === 1 && r.wishes === 1 && r.pose == null, r);
 
   r = await ev(() => {
     T.tp('mohamed', 3.4, 0.7, -3.0); T.run(0.3, {});

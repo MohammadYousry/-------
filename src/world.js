@@ -62,6 +62,11 @@
       this.M = this.makeMaterials(this.theme);
       this.setupEnvironment();
       def.build(this, MM.Props);
+      // optional couple photo spots: [x, z, caption], placed on whatever floor is there
+      (def.photoSpots || []).forEach(([x, z, caption, yh], i) => {
+        const y = Ph.groundBelow(this.solids, x, z, (yh || 0) + 1.5, 0.3);
+        if (y > -20) this.photoSpot('opt' + i, x, z, y, { optional: true, caption, label: 'Couple photo · stand here together, press Love' });
+      });
       if (this.grassAreas.length) this.makeGrass();
       if (G.hq && this.lamps.length && (this.theme.stars || this.def.rain || this.def.night || ['cairo', 'nile', 'grind', 'tech', 'rain', 'yousr'].indexOf(this.def.theme) >= 0)) this.makeLampLights();
       this.setHints(MM.save.settings.hints !== false);
@@ -721,7 +726,7 @@
       const cam = MM.Props.tripod(); cam.position.set(0, 0, 3.2); cam.rotation.y = Math.PI; grp.add(cam);
       const lb = G.textPlane(o.label || 'Photo · stand here together and press Love', 0.17, { color: '#fff', bg: 'rgba(30,14,40,.82)', size: 56, pad: 10 }); lb.position.set(0, 2.3, 3.2); grp.add(lb);
       this.add(grp);
-      const obj = { type: 'photo', id, x, z, y, r: 1.4, taken: false, grp, ring };
+      const obj = { type: 'photo', id, x, z, y, r: 1.4, taken: false, grp, ring, optional: !!o.optional, caption: o.caption };
       this.photos.push(obj);
       return obj;
     }
@@ -737,7 +742,7 @@
         const ph = this.photos[i];
         if (ph.taken) continue;
         const ok = players.length === 2 && players.every((q) => Math.hypot(q.body.x - ph.x, q.body.z - ph.z) < ph.r && Math.abs(q.body.y - ph.y) < 1.2);
-        if (ok) { this.takePhoto(ph.id); return true; }
+        if (ok) { this.takePhoto(ph.id); return ph.optional ? 'used' : true; }
       }
       return false;
     }
@@ -750,6 +755,8 @@
       this.game.photoFlash();
       this.game.fx.emit('sparkle', new T.Vector3(ph.x, ph.y + 1.5, ph.z), { n: 20 });
       if (!fromNet) this.game.net.sendEv({ e: 'photo', id });
+      // optional couple photo spots keep the picture, taken from the tripod, in "Our photos"
+      if (ph.optional) this.game.couplePhoto(ph);
     }
 
     // Family members and friends. They say their line once when someone walks up.

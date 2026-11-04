@@ -87,7 +87,37 @@ button{font:inherit;color:inherit}
 .title-today span{font-size:var(--s-sm);color:var(--cream)}
 .title-counters{display:flex;flex-wrap:wrap;gap:6px}
 .title-counters span{font-size:var(--s-xs);font-weight:700;background:rgba(20,8,28,.55);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.title-mem{display:flex;flex-direction:column;gap:2px;padding:9px 13px;border-radius:14px;background:rgba(20,8,28,.5);border:1px solid var(--line);max-width:520px}
+.title-mem b{font-size:var(--s-md)}
+.title-mem span:last-child{font-size:var(--s-xs);color:var(--cream);opacity:.85}
 .ch-card .stars{color:var(--gold);letter-spacing:.08em;margin-left:6px}
+/* couple quiz */
+.quiz-panel{display:flex;flex-direction:column;gap:14px}
+.quiz-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.quiz-hearts{color:var(--rose);letter-spacing:.1em}
+.quiz-hearts i{color:rgba(255,255,255,.25);font-style:normal}
+.quiz-q{font-size:var(--s-xl);line-height:1.2;margin:0}
+.quiz-opts{display:grid;gap:8px}
+.quiz-opt{justify-content:flex-start;text-align:left;white-space:normal;line-height:1.25}
+.quiz-opt.right{background:rgba(126,224,195,.25);border-color:#7ee0c3;color:#fff}
+.quiz-opt.wrong{background:rgba(255,79,139,.22);border-color:var(--rose)}
+.quiz-opt[disabled]{opacity:1}
+.quiz-note{margin:0}
+.quiz-next{align-self:flex-start}
+.quiz-end{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.quiz-score{font-family:"Yellowtail",cursive;font-size:64px;color:var(--gold);line-height:1}
+/* our looks */
+.looks-screen{align-items:stretch;justify-content:flex-start;pointer-events:none}
+.looks-panel{pointer-events:auto;width:min(460px,46vw);display:flex;flex-direction:column;gap:12px;overflow-y:auto;max-height:100%;padding:16px 18px}
+.look-rows{display:flex;flex-direction:column;gap:10px}
+.look-row{display:flex;flex-direction:column;gap:5px}
+.look-row>b{font-size:var(--s-xs);letter-spacing:.06em;text-transform:uppercase;color:var(--gold)}
+.look-row .seg{flex-wrap:wrap;max-width:100%}
+.look-row .seg button{font-size:var(--s-xs);padding:6px 10px}
+.swatches{display:flex;flex-wrap:wrap;gap:7px}
+.swatches button{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.35);cursor:pointer;padding:0}
+.swatches button.on{outline:3px solid var(--gold);outline-offset:2px;border-color:#fff}
+@media (orientation:portrait){ .looks-screen{align-items:flex-end} .looks-panel{width:100%;max-height:56vh} }
 /* love letters */
 .letter-form{display:grid;gap:8px;max-width:640px;margin:0 0 18px}
 .letter-form select,.letter-form textarea{font:inherit;background:rgba(0,0,0,.3);color:var(--cream);border:1px solid var(--line);border-radius:12px;padding:10px}
@@ -369,7 +399,7 @@ body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px
   .btn .ico{width:28px;height:28px;flex-basis:28px}
   .title-links{grid-template-columns:repeat(4,minmax(0,1fr))}
   .title-wrap{max-width:640px}
-  .title-counters{display:none}
+  .title-counters,.title-mem{display:none}
   .title-today{padding:6px 12px}
   .title-today b{font-size:var(--s-md)}
   #scr-title .stack{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
@@ -461,6 +491,7 @@ body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px
       <div class="title-ar">محمد <span class="h">♥</span> مريم</div>
       <div class="title-today" id="title-today" hidden><b></b><span></span></div>
       <div class="title-counters" id="title-counters"></div>
+      <div class="title-mem" id="title-mem" hidden><span class="eyebrow">Memory of the day</span><b></b><span></span></div>
       <p class="title-tag">From two kids at the same school to Dr. Mariem, our home and forever. Twenty chapters you can only finish together.</p>
       <div class="stack">
         <button class="btn primary" data-act="local"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M12 5v13M8 21h8"/></svg></span><span>Play together<span class="sub">Same screen · split-screen · keyboard or gamepads</span></span></button>
@@ -474,6 +505,8 @@ body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px
         <button class="btn" data-act="photos">Our photos</button>
         <button class="btn" data-act="letters" id="letters-link">Love letters</button>
         <button class="btn" data-act="home">🏡 Our home</button>
+        <button class="btn" data-act="looks">Our looks</button>
+        <button class="btn" data-act="quiz">Couple quiz</button>
         <button class="btn" data-act="howto">How to play</button>
         <button class="btn" data-act="settings">Settings</button>
         <button class="btn" data-act="timeline">Our story</button>
@@ -581,6 +614,7 @@ body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px
         <div class="set-row"><label for="set-music">Music</label><input type="range" id="set-music" min="0" max="1" step="0.05"></div>
         <div class="set-row"><label for="set-sfx">Sound effects</label><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
         <div class="set-row"><label>Graphics</label><div class="seg" id="q-seg"><button data-q="low">Light</button><button data-q="high">Pretty</button></div></div>
+        <div class="set-row"><div><label>Our looks</label><div class="muted" style="font-size:var(--s-xs)">Skin, hair, beard, eyes, glasses, hijab colour.</div></div><button class="btn small" data-act="looks">Make them look like us →</button></div>
         <div class="set-row wardrobe"><div><label>Mohamed's outfit</label><div class="muted" style="font-size:var(--s-xs)">Finish chapters to unlock more.</div></div><div class="seg" id="o-seg-m"></div></div>
         <div class="set-row wardrobe"><label>Mariem's outfit</label><div class="seg" id="o-seg-f"></div></div>
         <div class="set-row"><div><label for="song-file">Our song</label><div class="muted" style="font-size:var(--s-xs)">Pick an MP3 (a Suno track works great). It replaces the game music on this device.</div></div><div class="row"><input type="file" id="song-file" accept="audio/*" hidden><button class="btn small" data-act="pick-song">Choose song</button><button class="btn small" data-act="clear-song" id="clear-song" hidden>Remove</button></div></div>
@@ -588,6 +622,25 @@ body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px
         <div class="set-row"><div><label for="set-wedding">Our wedding day</label><div class="muted" style="font-size:var(--s-xs)">For the countdown on the title screen, and a celebration every year.</div></div><input type="date" id="set-wedding" class="date-in"></div>
         <div class="set-row"><label>Progress</label><button class="btn small" data-act="reset-progress" id="reset-btn">Reset progress</button></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ===== COUPLE QUIZ ===== -->
+  <section class="screen solid" id="scr-quiz" hidden>
+    <button class="btn small back" data-act="back">← Back</button>
+    <div class="page" style="max-width:640px">
+      <div class="page-head"><div class="eyebrow">Play it together, on one screen</div><h2 class="h2">How well do you know us?</h2></div>
+      <div class="panel quiz-panel" id="quiz-body"></div>
+    </div>
+  </section>
+
+  <!-- ===== OUR LOOKS ===== -->
+  <section class="screen looks-screen" id="scr-looks" hidden>
+    <div class="looks-panel panel">
+      <div class="row" style="justify-content:space-between;align-items:center"><button class="btn small" data-act="back">← Back</button><div class="seg" id="look-who"><button data-w="mohamed" class="on">Mohamed</button><button data-w="mariem">Mariem</button></div></div>
+      <div><div class="eyebrow">Make them look like you</div><h2 class="h2" style="margin:2px 0 4px">Our looks</h2><p class="muted" style="margin:0;font-size:var(--s-xs)">Skin, hair, beard, eyes, glasses and her everyday hijab. Chapter outfits stay as they are. Online, your partner sees you the way you chose.</p></div>
+      <div id="look-rows" class="look-rows"></div>
+      <button class="btn small" data-act="look-reset">Back to the original look</button>
     </div>
   </section>
 
@@ -711,6 +764,7 @@ body.touch #subtitle{top:auto;bottom:calc(env(safe-area-inset-bottom,0px) + 14px
 <script src="src/drive.js"></script>
 <script src="src/concert.js"></script>
 <script src="src/photo.js"></script>
+<script src="src/quiz.js"></script>
 <script src="src/extras.js"></script>
 <script src="src/levels.js"></script>
 <script src="src/levels2.js"></script>

@@ -436,7 +436,7 @@
 
     /* =================================================================== 4 */
     {
-      id: 'whitecoat', num: 4, year: '2021', title: 'The White Coat', theme: 'alex', music: 'alex',
+      photoSpots: [[70, 1.2, 'Her first day', 0]], id: 'whitecoat', num: 4, year: '2021', title: 'The White Coat', theme: 'alex', music: 'alex',
       outfit: { mohamed: 1, mariem: 1 },
       intro: ['University. He chose Computer Engineering. She chose the Faculty of Medicine, Alexandria.', 'On her first day, he took her all the way to the gate.', 'Then she put on the white coat, and he forgot how to talk.'],
       mission: 'Get Mariem to the Faculty of Medicine. Find her student ID, her stethoscope and her white coat.',
@@ -510,7 +510,7 @@
 
     /* =================================================================== 5 */
     {
-      id: 'cheap', num: 5, year: '2021 – 2022', title: 'Zero Money, Full Hearts', theme: 'sunset', music: 'alex',
+      photoSpots: [[76, -1.2, 'Sunset on the Corniche', 0]], id: 'cheap', num: 5, year: '2021 – 2022', title: 'Zero Money, Full Hearts', theme: 'sunset', music: 'alex',
       outfit: { mohamed: 1, mariem: 1 },
       intro: ['He had no money. Not a little: none.', 'So they ate koshari, kebda and McDonald\'s fries, took the bus after college and sat on the Corniche watching the sea.', 'Not engaged, no car. Just two friends who loved each other. She worried about him every single day.'],
       mission: 'Share 3 cheap meals (koshari, kebda, fries), catch the bus together, then watch the sunset on the Corniche.',

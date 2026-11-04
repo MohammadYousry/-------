@@ -98,6 +98,9 @@
     { id: 'letter', icon: '💌', title: 'Love Letter', text: 'Leave a letter in the mailbox at home.', test: () => stat('letters') >= 1 },
     { id: 'home', icon: '🏡', title: 'Home Sweet Home', text: 'Visit our home.', test: () => stat('homeVisits') >= 1 },
     { id: 'special', icon: '🎉', title: 'Special Day', text: 'Play on one of our special dates.', test: () => stat('specialDays') >= 1 },
+    { id: 'quiz', icon: '🧠', title: 'We Know Us', text: 'Ten out of ten in the couple quiz.', test: () => stat('quizBest') >= 10 },
+    { id: 'dance', icon: '💃', title: 'Our First Dance', text: 'Dance together at home.', test: () => stat('dances') >= 1 },
+    { id: 'wish', icon: '🌠', title: 'Written in the Stars', text: 'Make a wish on the balcony.', test: () => stat('wishes') >= 1 },
   ];
 
   // Re-check every trophy; announce the new ones. Returns the newly unlocked list.

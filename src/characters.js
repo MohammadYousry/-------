@@ -24,7 +24,41 @@
   OUTFITS.mariem.dress = { skin: '#ebb898', hijab: '#f1d6dc', top: '#e7b7c3', dress: '#e7b7c3', fleck: '#fff2c4', shoes: '#f1e6da', lips: '#c4566c', pendant: true };
   OUTFITS.mariem.bride = { skin: '#ebb898', hijab: '#ffffff', top: '#ffffff', dress: '#ffffff', fleck: '#ffe9b0', shoes: '#ffffff', lips: '#c4566c', tiara: true, veil: true };
   OUTFITS.mariem.summer = { skin: '#ebb898', hijab: '#8fc6d9', top: '#f6f1ea', poncho: null, jeans: '#f6f1ea', shoes: '#f1e6da', lips: '#c4566c', glasses: true };
+  OUTFITS.mohamed.forEach((o) => { o.free = true; }); OUTFITS.mariem.forEach((o) => { o.free = true; });
   MM.OUTFITS = OUTFITS;
+
+  /* "Our looks": choices in the game that make the two of them look more like the real Mohamed and Mariem.
+     Stored in MM.save.settings.look[who]; anything left unset keeps the original design. */
+  const LOOKS = {
+    skin: ['#f3cfb3', '#ebb898', '#d9a07c', '#c48a66', '#a86e4e', '#7e4f36'],
+    hair: ['#17110f', '#3a261b', '#6b4a33', '#9a7a5a', '#8a8a8a'],
+    iris: ['#2a1a12', '#5a3a22', '#7a6a3a', '#4f7a52', '#4a6a8a'],
+    hijab: ['#d3cdd0', '#f1d6dc', '#e7b7c3', '#b98a9a', '#7b7a4f', '#8fc6d9', '#2c3e66', '#1c1a20', '#6a2a3a', '#c4a07a', '#ffffff'],
+    hairStyle: [['classic', 'Classic'], ['quiff', 'Quiff'], ['side', 'Side part'], ['curly', 'Curly'], ['buzz', 'Buzz cut']],
+    beardStyle: [['full', 'Full'], ['short', 'Short'], ['stubble', 'Stubble'], ['none', 'None']],
+    glassesM: [['', 'None'], ['round', 'Round'], ['square', 'Square']],
+    glassesF: [['', 'None'], ['round', 'Round']],
+    build: [['big', 'Big'], ['fit', 'Fit']],
+  };
+  MM.LOOKS = LOOKS;
+  function withLook(who, o) {
+    const L = (MM.save && MM.save.settings.look && MM.save.settings.look[who]) || {};
+    const r = Object.assign({}, o);
+    if (L.skin) r.skin = L.skin;
+    if (L.iris) r.iris = L.iris;
+    if (who === 'mohamed') {
+      if (L.hair) { r.hair = L.hair; r.beard = L.hair; r.brow = L.hair; }
+      if (L.hairStyle) r.hairStyle = L.hairStyle;
+      if (L.beardStyle && r.beardStyle !== 'none') r.beardStyle = L.beardStyle;
+      if (L.glasses !== undefined) r.glasses = L.glasses || false;
+      if (L.build === 'fit') r.slim = true;
+    } else {
+      if (L.glasses !== undefined) r.eyeGlasses = L.glasses || false;
+      if (L.hijab && o.free) r.hijab = L.hijab;
+    }
+    return r;
+  }
+  const shade = (c, l) => '#' + new T.Color(c).offsetHSL(0, 0, l).getHexString();
 
   function m(color, o) { return G.mat(color, o); }
   // Characters get their own copies of materials with a gentle fresnel rim light.
@@ -49,16 +83,27 @@
   }
   function add(parent, geo, mat, x, y, z) { return G.mesh(geo, mat, x, y, z, parent); }
 
+  // Eyes with a white, a coloured iris, a pupil and two catch-lights, under a soft lid line (lashes for the girls).
   function buildFace(head, r, o) {
-    const eyeMat = m('#1a1018', { r: 0.3 });
-    const white = G.basic('#ffffff');
+    const R = o.eyeR;
+    const sclera = m('#fbf6f1', { r: 0.35 }), iris = m(o.iris || '#2a1a12', { r: 0.2 }), pupil = m('#0b0607', { r: 0.2 });
+    const shine = G.basic('#ffffff'), lid = m(o.lid || '#1a1018', { r: 0.5 });
     const eyes = [];
     [-1, 1].forEach((s) => {
-      const e = add(head, G.sphere(o.eyeR, 14, 10), eyeMat, s * o.eyeX, o.eyeY, r * 0.9);
-      e.scale.set(1, 1.15, 0.55); e.castShadow = false;
-      const h = add(e, G.sphere(o.eyeR * 0.32, 8, 6), white, 0.012 * (r / 0.29), o.eyeR * 0.35, o.eyeR * 0.75);
-      h.castShadow = false;
-      eyes.push(e);
+      const eg = new T.Group(); eg.position.set(s * o.eyeX, o.eyeY, r * 0.86); head.add(eg);
+      const parts = [];
+      const sc = add(eg, G.sphere(R * 1.05, 16, 12), sclera, 0, 0, 0); sc.scale.set(1, 1.2, 0.55); parts.push(sc);
+      const ir = add(eg, G.sphere(R * 0.76, 16, 12), iris, s * R * 0.05, -R * 0.06, R * 0.3); ir.scale.set(1, 1.12, 0.45); parts.push(ir);
+      const pu = add(eg, G.sphere(R * 0.42, 12, 10), pupil, s * R * 0.05, -R * 0.06, R * 0.43); pu.scale.set(1, 1.1, 0.4); parts.push(pu);
+      parts.push(add(eg, G.sphere(R * 0.24, 8, 6), shine, R * 0.24, R * 0.28, R * 0.6));
+      parts.push(add(eg, G.sphere(R * 0.11, 6, 5), shine, -R * 0.22, -R * 0.3, R * 0.56));
+      const ln = add(eg, G.torus(R * 1.04, R * (o.lashes ? 0.2 : 0.14), Math.PI * 0.86), lid, 0, 0, R * 0.14);
+      ln.rotation.z = Math.PI * 0.07; ln.scale.set(1, 1.22, 0.5); parts.push(ln);
+      if (o.lashes) {
+        [0, 1].forEach((k) => { const l = add(eg, G.box(R * 0.42, R * 0.12, R * 0.1), lid, s * R * (0.86 + k * 0.2), R * (0.86 - k * 0.32), R * 0.2); l.rotation.z = s * (0.55 + k * 0.35); parts.push(l); });
+      }
+      parts.forEach((q) => { q.castShadow = false; });
+      eyes.push(eg);
     });
     return eyes;
   }
@@ -87,7 +132,7 @@
       this.squash = 1; this.squashV = 0;
       this.blinkT = 2 + Math.random() * 3;
       this.flashT = 0;
-      const pick = (who) => (typeof outfit === 'string' ? OUTFITS[who][outfit] : OUTFITS[who][outfit || 0]) || OUTFITS[who][0];
+      const pick = (who) => withLook(who, (typeof outfit === 'string' ? OUTFITS[who][outfit] : OUTFITS[who][outfit || 0]) || OUTFITS[who][0]);
       if (id === 'mohamed') this.buildMohamed(pick('mohamed'));
       else if (id === 'mariem') this.buildMariem(pick('mariem'));
       else if (id === 'npc') this.buildNpc(opts || {});
@@ -106,6 +151,9 @@
         add(L, G.cyl(0.15, 0.13, 0.76, 14), m(o.pants, { r: 0.8 }), 0, -0.38, 0);
         add(L, G.box(0.24, 0.13, 0.36), m(o.shoes, { r: 0.5 }), 0, -0.79, 0.05);
         add(L, G.box(0.25, 0.04, 0.37), m(o.sole), 0, -0.85, 0.05);
+        add(L, G.box(0.2, 0.07, 0.1), m(shade(o.shoes, o.suit ? 0.08 : -0.06), { r: 0.4 }), 0, -0.78, 0.2);
+        if (!o.suit) [0, 1].forEach((k) => add(L, G.box(0.13, 0.015, 0.025), m(shade(o.shoes, -0.25)), 0, -0.715, 0.04 + k * 0.06));
+        add(L, G.cyl(0.152, 0.152, 0.04, 14), m(shade(o.pants, -0.08), { r: 0.8 }), 0, -0.7, 0);
       });
       add(b, G.cyl(0.32, 0.3, 0.26, 18), m(o.pants, { r: 0.8 }), 0, 0.84, 0);
       const torso = add(b, G.capsule(0.36, 0.26), m(o.tee, { r: o.suit ? 0.55 : 0.9 }), 0, 1.12, 0);
@@ -116,18 +164,22 @@
         pr.position.set(0, 1.0, 0.31); b.add(pr);
       }
       if (o.collar) { const c = add(b, G.box(0.36, 0.08, 0.06), m(o.collar), 0, 1.5, 0.22); c.rotation.x = -0.3; }
+      else if (!o.suit) { const nk = add(b, G.torus(0.16, 0.026), m(shade(o.tee, -0.07), { r: 0.85 }), 0, 1.47, 0.02); nk.rotation.x = Math.PI / 2 - 0.25; nk.scale.set(1.1, 1, 0.8); }
       if (o.suit) {
         const shirt = add(b, G.box(0.22, 0.42, 0.04), m('#ffffff', { r: 0.6 }), 0, 1.28, 0.3); shirt.rotation.x = -0.12;
         if (o.bow) { add(b, G.box(0.16, 0.06, 0.04), m(o.tie), 0, 1.47, 0.32); }
         else { const tie = add(b, G.box(0.06, 0.32, 0.03), m(o.tie, { r: 0.5 }), 0, 1.3, 0.325); tie.rotation.x = -0.12; }
         [-1, 1].forEach((s) => { const lp = add(b, G.box(0.08, 0.42, 0.03), m(o.tee, { r: 0.5 }), s * 0.14, 1.28, 0.31); lp.rotation.set(-0.12, 0, s * 0.18); });
         if (o.flower) { add(b, G.sphere(0.05, 10, 8), m('#ffffff'), -0.2, 1.42, 0.3); }
+        [1.02, 1.14].forEach((y) => add(b, G.sphere(0.022, 8, 6), m(shade(o.tee, -0.1), { r: 0.3, m: 0.3 }), 0.07, y, 0.3));
+        if (!o.flower) { const sq = add(b, G.box(0.09, 0.05, 0.02), m('#ffffff', { r: 0.6 }), -0.24, 1.33, 0.26); sq.rotation.set(-0.15, -0.35, 0.12); }
       }
       this.armL = this.limb(b, -0.43, 1.42); this.armR = this.limb(b, 0.43, 1.42);
       [this.armL, this.armR].forEach((A) => {
         add(A, G.capsule(0.125, 0.2), m(o.sleeve, { r: 0.9 }), 0, -0.14, 0);
         add(A, o.suit ? G.capsule(0.1, 0.26) : G.capsule(0.095, 0.26), o.suit ? m(o.sleeve, { r: 0.6 }) : skin, 0, -0.44, 0);
         add(A, G.sphere(0.105, 12, 10), skin, 0, -0.62, 0.01);
+        const cuff = add(A, G.torus(o.suit ? 0.1 : 0.125, 0.02), m(o.suit ? '#ffffff' : shade(o.sleeve, -0.07), { r: 0.7 }), 0, o.suit ? -0.55 : -0.3, 0); cuff.rotation.x = Math.PI / 2;
       });
       this.head = this.limb(b, 0, 1.5);
       const r = 0.29, hc = 0.17;
@@ -135,27 +187,38 @@
       add(hg, G.sphere(r, 26, 20), skin, 0, 0, 0);
       [-1, 1].forEach((s) => add(hg, G.sphere(0.065, 10, 8), skin, s * r * 0.98, -0.01, -0.02));
       const hairCol = o.hair;
-      if (!o.bald) {
-        const hair = add(hg, new T.SphereGeometry(r * 1.06, 26, 12, 0, Math.PI * 2, 0, Math.PI * 0.36), m(hairCol, { r: 0.95 }), 0, 0.01, -0.02);
+      const hs = o.bald ? 'bald' : o.hairStyle || 'classic', hm = m(hs === 'buzz' ? shade(hairCol, 0.06) : hairCol, { r: 0.95 });
+      if (hs !== 'bald') {
+        const hair = add(hg, new T.SphereGeometry(r * (hs === 'buzz' ? 1.015 : 1.06), 26, 12, 0, Math.PI * 2, 0, Math.PI * (hs === 'buzz' ? 0.33 : 0.36)), hm, 0, 0.01, -0.02);
         hair.rotation.x = -0.28;
       }
-      add(hg, new T.SphereGeometry(r * 1.03, 26, 14, Math.PI * 0.78, Math.PI * 1.44, Math.PI * (o.bald ? 0.3 : 0.12), Math.PI * (o.bald ? 0.3 : 0.5)), m(hairCol, { r: 0.95 }), 0, 0, 0);
+      if (hs === 'quiff') [[-0.05, 0.84, 0.55, 0.085], [0.05, 0.88, 0.5, 0.08], [0, 0.96, 0.3, 0.085]].forEach(([x, y, z, rr]) => { const t = add(hg, G.sphere(rr, 12, 10), hm, x, r * y, r * z); t.scale.set(1.25, 0.8, 1.1); t.rotation.x = -0.4; });
+      if (hs === 'side') { const sw = add(hg, G.sphere(0.12, 14, 10), hm, -0.05, r * 0.8, r * 0.52); sw.scale.set(1.6, 0.55, 0.9); sw.rotation.set(-0.35, 0, 0.3); }
+      if (hs === 'curly') for (let i = 0; i < 20; i++) { const a = i * 2.4, k = 0.2 + (i % 5) * 0.06; const cu = add(hg, G.sphere(0.07, 8, 6), hm, Math.sin(a) * r * (0.35 + k), r * (1.0 - k * 0.55), Math.cos(a) * r * (0.35 + k) - 0.02); cu.castShadow = false; }
+      add(hg, new T.SphereGeometry(r * (hs === 'buzz' ? 1.012 : 1.03), 26, 14, Math.PI * 0.78, Math.PI * 1.44, Math.PI * (hs === 'bald' ? 0.3 : 0.12), Math.PI * (hs === 'bald' ? 0.3 : 0.5)), hm, 0, 0, 0);
       const style = o.beardStyle || 'full';
-      if (style === 'full') add(hg, new T.SphereGeometry(r * 1.035, 26, 14, Math.PI * 0.1, Math.PI * 0.8, Math.PI * 0.53, Math.PI * 0.4), m(o.beard, { r: 1 }), 0, 0, 0);
-      if (style !== 'none') { const must = add(hg, G.capsule(0.024, 0.12), m(o.beard || hairCol, { r: 1 }), 0, -0.07, r * 1.0); must.rotation.z = Math.PI / 2; }
+      const bm = m(style === 'stubble' ? '#' + new T.Color(o.skin).lerp(new T.Color(o.beard || hairCol), 0.55).getHexString() : o.beard, { r: 1 });
+      if (style === 'full') add(hg, new T.SphereGeometry(r * 1.035, 26, 14, Math.PI * 0.1, Math.PI * 0.8, Math.PI * 0.53, Math.PI * 0.4), bm, 0, 0, 0);
+      if (style === 'short') add(hg, new T.SphereGeometry(r * 1.02, 26, 14, Math.PI * 0.12, Math.PI * 0.76, Math.PI * 0.58, Math.PI * 0.33), bm, 0, 0, 0);
+      if (style === 'stubble') add(hg, new T.SphereGeometry(r * 1.008, 26, 14, Math.PI * 0.1, Math.PI * 0.8, Math.PI * 0.55, Math.PI * 0.38), bm, 0, 0, 0);
+      if (style === 'full' || style === 'short' || style === 'mustache') { const must = add(hg, G.capsule(0.024, 0.12), m(o.beard || hairCol, { r: 1 }), 0, -0.07, r * 1.0); must.rotation.z = Math.PI / 2; }
       const mouth = add(hg, new T.CircleGeometry(0.068, 20, Math.PI, Math.PI), m('#5a1f24', { r: 0.6 }), 0, -0.105, r * 1.035);
       mouth.scale.set(1, 0.85, 1); mouth.castShadow = false;
       add(mouth, new T.PlaneGeometry(0.1, 0.022), G.basic('#fffaf2'), 0, -0.012, 0.002).castShadow = false;
       add(hg, G.sphere(0.05, 10, 8), m('#b97c5b', { r: 0.6 }), 0, -0.02, r * 0.98);
-      this.eyes = buildFace(hg, r, { eyeR: 0.04, eyeX: 0.1, eyeY: 0.045 });
-      [-1, 1].forEach((s) => { const br = add(hg, G.box(0.12, 0.032, 0.03), m(o.brow || hairCol), s * 0.1, 0.13, r * 0.93); br.rotation.z = s * -0.12; });
-      if (o.glasses) this.eyeGlasses(hg, r, 0.1, 0.045);
+      this.eyes = buildFace(hg, r, { eyeR: 0.042, eyeX: 0.1, eyeY: 0.045, iris: o.iris });
+      [-1, 1].forEach((s) => { const br = add(hg, G.box(0.12, 0.034, 0.03), m(o.brow || hairCol), s * 0.1, 0.135, r * 0.93); br.rotation.z = s * -0.14; });
+      if (o.glasses) this.eyeGlasses(hg, r, 0.1, 0.045, o.glasses);
       this.height = 1.95;
     }
 
-    eyeGlasses(hg, r, ex, ey) {
-      const gm = m('#2b2228', { r: 0.3, m: 0.4 });
-      [-1, 1].forEach((s) => add(hg, G.torus(0.06, 0.01), gm, s * ex, ey, r * 0.98));
+    eyeGlasses(hg, r, ex, ey, shape) {
+      const gm = m('#2b2228', { r: 0.3, m: 0.4 }), w = ex > 0.09 ? 0.064 : 0.055;
+      [-1, 1].forEach((s) => {
+        if (shape === 'square') { [[0, w * 0.85, w * 2.1, 0.014], [0, -w * 0.85, w * 2.1, 0.014]].forEach(([x, y, ww, hh]) => add(hg, G.box(ww, hh, 0.012), gm, s * ex + x, ey + y, r * 0.99)); [-1, 1].forEach((k) => add(hg, G.box(0.014, w * 1.7, 0.012), gm, s * ex + k * w, ey, r * 0.99)); }
+        else add(hg, G.torus(w, 0.01), gm, s * ex, ey, r * 0.98);
+        const arm = add(hg, G.box(0.012, 0.012, r * 0.9), gm, s * (ex + w + 0.005), ey + 0.005, r * 0.5); arm.rotation.y = s * 0.18;
+      });
       add(hg, G.box(0.06, 0.012, 0.012), gm, 0, ey, r * 1.0);
     }
 
@@ -167,6 +230,8 @@
       [this.legL, this.legR].forEach((L) => {
         add(L, G.cyl(0.085, 0.12, 0.46, 12), m(o.jeans || o.dress || '#26324c', { r: 0.85 }), 0, -0.23, 0);
         add(L, G.box(0.13, 0.06, 0.21), m(o.shoes, { r: 0.4 }), 0, -0.47, 0.04);
+        if (!o.dress) add(L, G.cyl(0.088, 0.088, 0.03, 12), m(shade(o.jeans || '#26324c', -0.06), { r: 0.85 }), 0, -0.41, 0);
+        add(L, G.sphere(0.022, 8, 6), m(shade(o.shoes, -0.2), { r: 0.4 }), 0, -0.44, 0.14);
       });
       const torso = add(b, G.capsule(0.17, 0.2), m(o.top, { r: 0.85 }), 0, 0.75, 0);
       torso.scale.set(1, 1, 0.85); this.torso = torso;
@@ -174,6 +239,8 @@
         const tex = G.glitterTex(o.dress, o.fleck || '#ffffff');
         const dm = new T.MeshStandardMaterial({ map: tex, roughness: 0.5, metalness: 0.25, color: '#ffffff' });
         add(b, G.cyl(0.16, 0.44, 0.88, 26), dm, 0, 0.5, 0);
+        const sash = add(b, G.torus(0.235, 0.024), m(o.veil ? '#f3e2b8' : shade(o.dress, -0.12), { r: 0.4, m: o.veil ? 0.5 : 0.1 }), 0, 0.72, 0); sash.rotation.x = Math.PI / 2;
+        [-1, 1].forEach((s) => { const bw = add(b, G.sphere(0.045, 10, 8), m(o.veil ? '#f3e2b8' : shade(o.dress, -0.16), { r: 0.4 }), 0.1 + s * 0.04, 0.73, 0.21); bw.scale.set(1.2, 0.7, 0.5); });
         if (o.veil) { const v = add(b, G.cyl(0.2, 0.5, 0.9, 24), m('#ffffff', { t: true, o: 0.35, ds: true }), 0, 0.62, -0.08); v.castShadow = false; }
       } else if (o.coat) {
         const coat = m('#ffffff', { r: 0.7 });
@@ -181,6 +248,8 @@
         const st = add(b, G.torus(0.13, 0.016, Math.PI * 1.4), m('#2c3e66', { r: 0.4 }), 0, 0.86, 0.12); st.rotation.set(-0.5, 0, Math.PI * 1.2);
         add(b, G.cyl(0.03, 0.03, 0.02, 10), m('#c9ccd3', { m: 0.8 }), 0.06, 0.74, 0.2).rotation.x = Math.PI / 2;
         const badge = G.textPlane('Dr. Mariem', 0.05, { color: '#2c3e66', bg: '#ffffff', size: 60, pad: 8 }); badge.position.set(-0.11, 0.86, 0.19); badge.rotation.y = -0.3; b.add(badge);
+        [-1, 1].forEach((s) => { const pk = add(b, G.box(0.1, 0.08, 0.02), m('#eef1f4', { r: 0.7 }), s * 0.17, 0.5, 0.2); pk.rotation.y = s * 0.45; });
+        [0.78, 0.66, 0.54].forEach((y) => add(b, G.sphere(0.014, 8, 6), m('#c9ccd3', { r: 0.3 }), 0.03, y, 0.2 + (0.78 - y) * 0.35));
       } else if (o.tunic) {
         add(b, G.cyl(0.17, 0.3, 0.56, 20), m(o.tunic, { r: 0.85 }), 0, 0.66, 0);
       } else if (o.poncho) {
@@ -190,10 +259,19 @@
       } else {
         add(b, G.cyl(0.16, 0.29, 0.5, 20), m(o.top, { r: 0.8 }), 0, 0.68, 0);
       }
+      // a little cross-body bag for everyday outfits
+      if (o.free) {
+        const strapM = m(o.bag || '#6b4a3a', { r: 0.6 });
+        [0.16, -0.155].forEach((z) => { const st = add(b, G.box(0.03, 0.56, 0.016), strapM, 0, 0.76, z); st.rotation.z = 0.62; st.castShadow = false; });
+        add(b, G.box(0.16, 0.12, 0.06), strapM, 0.2, 0.5, 0.06);
+        add(b, G.box(0.16, 0.05, 0.065), m(shade(o.bag || '#6b4a3a', 0.08), { r: 0.5 }), 0.2, 0.545, 0.062);
+        add(b, G.sphere(0.012, 6, 5), m('#d9b45a', { m: 0.8, r: 0.3 }), 0.2, 0.52, 0.095);
+      }
       this.armL = this.limb(b, -0.21, 0.93); this.armR = this.limb(b, 0.21, 0.93);
       [this.armL, this.armR].forEach((A, i) => {
         add(A, G.capsule(0.058, 0.26), m(o.coat ? '#ffffff' : o.top, { r: 0.85 }), 0, -0.19, 0);
         add(A, G.sphere(0.064, 10, 8), skin, 0, -0.39, 0.01);
+        const cf = add(A, G.torus(0.06, 0.012), m(shade(o.coat ? '#ffffff' : o.top, -0.08), { r: 0.8 }), 0, -0.32, 0); cf.rotation.x = Math.PI / 2;
         if (o.watch && i === 0) add(A, G.cyl(0.066, 0.066, 0.04, 12), m('#d9b45a', { r: 0.3, m: 0.8 }), 0, -0.33, 0);
       });
       if (o.pendant) add(b, G.cyl(0.04, 0.04, 0.015, 14), m('#c9932d', { r: 0.3, m: 0.8 }), 0, 0.86, 0.2).rotation.x = Math.PI / 2;
@@ -208,6 +286,11 @@
       const frame = add(hg, G.torus(r * 0.92, 0.03, Math.PI * 2), hj, 0, 0.0, r * 0.62);
       frame.scale.set(0.9, 1.08, 1);
       add(hg, G.cyl(0.19, 0.3, 0.2, 22), hj, 0, -r - 0.05, -0.01);
+      // the underscarf at the forehead, a soft drape over one shoulder, and a pearl pin
+      const band = add(hg, G.torus(r * 0.86, 0.017, Math.PI * 0.8), m(shade(o.hijab, -0.12), { r: 0.9 }), 0, 0.005, r * 0.66);
+      band.rotation.z = Math.PI * 0.1; band.scale.set(0.9, 1.08, 1);
+      const drape = add(hg, G.box(0.19, 0.3, 0.035), hj, 0.1, -r - 0.17, 0.11); drape.rotation.set(0.28, 0.15, 0.32);
+      add(hg, G.sphere(0.019, 10, 8), m('#f6efe6', { r: 0.25, m: 0.2 }), -r * 0.78, -0.05, r * 0.58);
       if (o.tiara) { const ti = add(hg, G.torus(0.13, 0.014, Math.PI), m('#ffd36e', { m: 0.9, r: 0.2 }), 0, r * 0.95, 0.08); ti.rotation.x = -0.5; }
       if (o.glasses) {
         const gm = m('#151215', { r: 0.2, m: 0.4 });
@@ -215,10 +298,10 @@
         add(hg, G.box(0.05, 0.012, 0.012), gm, 0, r * 1.03, 0.14);
       }
       if (o.eyeGlasses) this.eyeGlasses(hg, r, 0.083, 0.02);
-      this.eyes = buildFace(hg, r, { eyeR: 0.042, eyeX: 0.083, eyeY: 0.02 });
+      this.eyes = buildFace(hg, r, { eyeR: 0.046, eyeX: 0.083, eyeY: 0.02, iris: o.iris, lashes: true });
       [-1, 1].forEach((s) => {
-        const wing = add(hg, G.box(0.05, 0.012, 0.01), m('#1a1018'), s * 0.123, 0.042, r * 0.88);
-        wing.rotation.z = s * 0.45; wing.castShadow = false;
+        const brow = add(hg, G.torus(0.045, 0.008, Math.PI * 0.7), m('#3a2418', { r: 0.8 }), s * 0.085, 0.072, r * 0.93);
+        brow.rotation.z = Math.PI * 0.15 + s * 0.08; brow.scale.set(1, 0.55, 0.6); brow.castShadow = false;
         const blush = add(hg, new T.CircleGeometry(0.04, 16), G.basic('#ff8fa8', { o: 0.45 }), s * 0.125, -0.045, r * 0.93);
         blush.rotation.y = s * 0.45; blush.castShadow = false;
       });
@@ -324,6 +407,13 @@
       if (pose === 'idle-cute') { J.headZ = Math.sin(this.t * 1.3) * 0.12; }
       if (pose === 'dance') { const d = Math.sin(this.t * 7); J.armLz = 1.2 + d * 0.6; J.armRz = -1.2 + d * 0.6; J.armLx = -0.6 - d * 0.4; J.armRx = -0.6 + d * 0.4; J.bob = Math.abs(Math.sin(this.t * 7)) * 0.12; J.headZ = d * 0.15; J.roll = d * 0.08; }
       if (pose === 'cheer') { J.armLz = 2.5 + Math.sin(this.t * 8) * 0.2; J.armRz = -2.5 - Math.sin(this.t * 8) * 0.2; J.bob = Math.abs(Math.sin(this.t * 6)) * 0.08; }
+      if (pose === 'slowdance') {
+        const sw = Math.sin(this.t * 1.7);
+        if (kitten) { J.armLx = J.armRx = -2.15; J.armLz = -0.3; J.armRz = 0.3; J.head = -0.25; J.headZ = 0.2; }
+        else { J.armLx = J.armRx = -1.0; J.armLz = -0.35; J.armRz = 0.35; J.head = 0.2; J.headZ = -0.08; }
+        J.roll = sw * 0.05; J.bob = Math.abs(sw) * 0.025;
+      }
+      if (pose === 'gaze') { J.head = -0.55; J.armLx = -0.2; J.armRx = -0.2; J.headZ = kitten ? 0.18 : -0.1; }
       if (pose === 'pray') { J.armLx = -1.2; J.armRx = -1.2; J.armLz = -0.35; J.armRz = 0.35; J.head = 0.25; }
 
       if (this.action) {
@@ -368,7 +458,7 @@
       this.blinkT -= dt;
       const closed = (this.blinkT < 0.11 && this.blinkT > 0) || pose === 'sleep';
       if (this.blinkT <= 0) this.blinkT = 2 + Math.random() * 3.5;
-      if (this.eyes) this.eyes.forEach((e) => { e.scale.y = closed ? 0.12 : 1.15; });
+      if (this.eyes) this.eyes.forEach((e) => { e.scale.y = closed ? 0.1 : 1; });
       if (this.flashT > 0) { this.flashT -= dt; this.root.visible = Math.floor(this.flashT * 14) % 2 === 0; }
       else this.root.visible = true;
     }

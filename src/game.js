@@ -178,11 +178,22 @@
       const a = m.t * 0.07;
       const cam = this.cams[0];
       const R = m.ending ? 10 : 12.5;
-      cam.position.set(Math.sin(a) * R, 4.6 + Math.sin(m.t * 0.3) * 0.4, Math.cos(a) * R);
-      cam.lookAt(0, 1.3, 0);
       const w = window.innerWidth, h = window.innerHeight;
-      if (m.ending) cam.setViewOffset(w, h, 0, h * 0.3, w, h);
-      else if (w / h > 1.15) cam.setViewOffset(w, h, -w * 0.2, 0, w, h); else cam.clearViewOffset();
+      if (this.ui.current() === 'looks') {
+        // close up on whoever is being dressed
+        const mo = this.lookWho !== 'mariem', c = mo ? m.chars[0] : m.chars[1];
+        const port = w / h <= 1.15, tp = c.root.position, sw = Math.sin(m.t * 0.35) * 0.45 + (mo ? 0.3 : -0.3), d = (mo ? 3.3 : 2.5) * (port ? 1.3 : 1);
+        m.lc = m.lc || new T.Vector3().copy(cam.position);
+        m.lc.lerp(new T.Vector3(tp.x + Math.sin(sw) * d, (mo ? 1.55 : 1.05), tp.z + Math.cos(sw) * d), Math.min(1, dt * 3));
+        cam.position.copy(m.lc); cam.lookAt(tp.x, mo ? 1.2 : 0.8, tp.z);
+        if (!port) cam.setViewOffset(w, h, -w * 0.24, 0, w, h); else cam.setViewOffset(w, h, 0, h * 0.2, w, h);
+      } else {
+        m.lc = null;
+        cam.position.set(Math.sin(a) * R, 4.6 + Math.sin(m.t * 0.3) * 0.4, Math.cos(a) * R);
+        cam.lookAt(0, 1.3, 0);
+        if (m.ending) cam.setViewOffset(w, h, 0, h * 0.3, w, h);
+        else if (w / h > 1.15) cam.setViewOffset(w, h, -w * 0.2, 0, w, h); else cam.clearViewOffset();
+      }
       m.group.children.forEach((c) => { if (c.userData.cloud) c.position.y += Math.sin(m.t + c.position.x) * 0.002; });
       m.nextAct -= dt;
       if (m.nextAct <= 0) {
@@ -223,6 +234,9 @@
         case 'photo-share': if (this.photo) this.photo.shareLast(); break;
         case 'timeline': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('timeline'); break;
         case 'settings': ui.show('settings'); break;
+        case 'quiz': if (this.state === 'ending') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('quiz'); MM.Quiz.start(); break;
+        case 'looks': if (this.state !== 'title') { this.buildMenu(false); this.state = 'title'; MM.Audio.playMusic('title'); } ui.show('looks'); break;
+        case 'look-reset': ui.lookReset(); break;
         case 'back': if (ui.current() === 'letters' && this.level && this.state === 'paused') { this.resume(); break; }
           if (ui.current() === 'online') { this.net.close(); ui.online.reset(); this.resuming = null; this.session(null); } ui.back(); break;
         case 'start-local': this.startGame('local', this.firstUnfinished()); break;
@@ -417,6 +431,24 @@
       MM.Audio.sfx('memory');
       if (this.ui.current() === 'letters') this.ui.renderLetters();
     }
+    // Each of you chooses your own look; the newest choice for each character wins on both phones.
+    receiveLook(look) {
+      if (!look || typeof look !== 'object') return;
+      const mine = (MM.save.settings.look = MM.save.settings.look || {});
+      let changed = false;
+      ['mohamed', 'mariem'].forEach((w) => {
+        const inc = look[w];
+        if (!inc || typeof inc !== 'object' || !(+inc.at > ((mine[w] && mine[w].at) || 0))) return;
+        const clean = { at: +inc.at };
+        ['skin', 'hair', 'iris', 'hijab'].forEach((k) => { if (typeof inc[k] === 'string' && /^#[0-9a-f]{6}$/i.test(inc[k])) clean[k] = inc[k]; });
+        ['hairStyle', 'beardStyle', 'glasses', 'build'].forEach((k) => { if (typeof inc[k] === 'string' && inc[k].length < 12) clean[k] = inc[k]; });
+        mine[w] = clean; changed = true;
+      });
+      if (!changed) return;
+      MM.writeSave();
+      if (this.state === 'title') this.refreshMenuChars();
+      if (this.ui.current() === 'looks') this.ui.renderLooks();
+    }
     // When we connect, swap the letters written while apart (one message each, small enough for the relay).
     syncLetters() {
       const mine = (MM.save.letters || []).filter((l) => Date.now() - l.at < 45 * 86400000).slice(0, 25);
@@ -558,6 +590,88 @@
       if (q.local) q.receiveToss(fx, fz, vy);
       else this.net.sendEv({ e: 'launch', vy, fx, fz });
     }
+    /* ================= moments at home ================= */
+    // Both of you on the spot (in solo the other one comes over), then the moment plays on both screens.
+    homeTogether(p, spot, kind) {
+      const ps = this.players;
+      if (this.mode === 'solo') { const q = p.partner(); if (q && Math.hypot(q.body.x - spot.x, q.body.z - spot.z) > 2.2) q.place(new T.Vector3(spot.x + 0.8, p.body.y + 0.05, spot.z)); }
+      else if (!ps.every((q) => Math.hypot(q.body.x - spot.x, q.body.z - spot.z) < 2.4)) { this.ui.toast('', 'Bring your partner here too', true); return true; }
+      this.homeMoment(kind);
+      return true;
+    }
+    homeMoment(kind, fromNet) {
+      const L = this.level;
+      if (!L || !this.chapter || !this.chapter.hub || this.cut || this.state !== 'play') return;
+      if (!fromNet) this.net.sendEv({ e: 'moment', k: kind });
+      const mo = this.player('mohamed'), ma = this.player('mariem'), music = this.chapter.music;
+      const still = (p) => { p.body.vx = p.body.vz = 0; };
+      if (kind === 'dance') {
+        const C = L.danceSpot;
+        MM.Audio.playMusic('anniversary');
+        this.cutscene({
+          title: 'Our first dance', sub: 'Just us, in our living room', dur: 14, dist: 4.6, h: 1.4, at: [C.x, 0, C.z],
+          lines: [[1, 'mariem', 'Dance with me?'], [3.6, 'mohamed', 'For the rest of my life.'], [8.4, 'mariem', 'Don\'t step on my feet.'], [10.8, 'mohamed', 'No promises.']],
+          start: () => { L.setHints(false); [mo, ma].forEach((p) => { if (p.local) { p.seated = false; p.pose = 'slowdance'; } }); },
+          tick: (t, dt, g) => {
+            const a = t * 0.45, r = 0.42;
+            if (mo.local) { mo.body.x = C.x - Math.cos(a) * r; mo.body.z = C.z - Math.sin(a) * r; still(mo); mo.yaw = Math.atan2(Math.cos(a), Math.sin(a)); mo.pose = 'slowdance'; }
+            if (ma.local) { ma.body.x = C.x + Math.cos(a) * r; ma.body.z = C.z + Math.sin(a) * r; still(ma); ma.yaw = Math.atan2(-Math.cos(a), -Math.sin(a)); ma.pose = 'slowdance'; }
+            if (Math.random() < dt * 2.5) g.fx.emit('hearts', new T.Vector3(C.x, 2.3, C.z), { n: 2 });
+          },
+          end: () => { [mo, ma].forEach((p) => { if (p.local) p.pose = null; }); L.setHints(MM.save.settings.hints !== false); MM.Audio.playMusic(music); MM.Extras.bump('dances'); },
+        });
+      } else if (kind === 'stars') {
+        const C = L.starSpot, night = !!L.theme.stars;
+        const sky = L.wishStars || (L.wishStars = this.writeInSky(L, C, night));
+        this.cutscene({
+          title: 'Make a wish', sub: night ? 'Under our sky' : 'Over our sea', dur: 13, at: [C.x, 0, C.z],
+          cam: (t) => { const k = MM.ease.inOut(MM.clamp(t / 4, 0, 1)); return [[C.x + 0.2, 2.5 + k * 0.3, C.z + 3.6 - k * 1.4], [C.x, 1.2 + k * 15, C.z - 10 - k * 50]]; },
+          lines: [[1.2, 'mohamed', 'Look up.'], [4, 'mariem', 'M... and M?'], [6.6, 'mohamed', 'Written in the stars.'], [9.1, 'mariem', 'Make a wish.'], [11.1, 'mohamed', 'I already have everything I wished for.']],
+          start: () => {
+            if (mo.local) { mo.seated = false; mo.place(new T.Vector3(C.x - 0.5, 0.05, C.z)); mo.yaw = Math.PI; mo.pose = 'gaze'; }
+            if (ma.local) { ma.seated = false; ma.place(new T.Vector3(C.x + 0.5, 0.05, C.z)); ma.yaw = Math.PI; ma.pose = 'gaze'; }
+            sky.t = 0; sky.grp.visible = true; L.setHints(false);
+          },
+          tick: (t, dt) => { sky.t = t; [mo, ma].forEach((p) => { if (p.local) { still(p); p.yaw = Math.PI; } }); },
+          end: () => { [mo, ma].forEach((p) => { if (p.local) p.pose = null; }); L.setHints(MM.save.settings.hints !== false); MM.Extras.bump('wishes'); },
+        });
+      }
+    }
+    // "M ♥ M" written in stars over the sea (pink lights in the daytime). It stays up for the rest of the visit.
+    writeInSky(L, C, night) {
+      const M = ['X...X', 'XX.XX', 'X.X.X', 'X...X', 'X...X'];
+      const H = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+      const dots = [], put = (pat, x0) => pat.forEach((row, j) => row.split('').forEach((ch, i) => { if (ch === 'X') dots.push([x0 + i, -j]); }));
+      put(M, -10); put(H, -3.5); put(M, 5.5);
+      const grp = new T.Group(); grp.position.set(C.x, 26, C.z - 72); L.add(grp);
+      const mat = new T.SpriteMaterial({ map: G.tex('glow'), color: night ? 0xfff1c4 : 0xff6f9c, transparent: true, depthWrite: false, blending: night ? T.AdditiveBlending : T.NormalBlending, fog: false, opacity: 0 });
+      const sprites = dots.map(([x, y], i) => { const s = new T.Sprite(mat.clone()); s.position.set(x * 2.2, y * 2.2, 0); s.scale.setScalar(night ? 2.2 : 1.9); s.userData.k = i / dots.length; grp.add(s); return s; });
+      const st = { grp, t: 0 };
+      L.anim.push((t) => {
+        sprites.forEach((s, i) => { const on = MM.clamp((st.t - 2.2 - s.userData.k * 3) * 1.5, 0, 1); s.material.opacity = on * (0.75 + Math.sin(t * 3 + i) * 0.25); });
+        if (st.t < 20) st.t += 1 / 60;
+      });
+      return st;
+    }
+
+    // The tripod's view of the two of you, kept as a polaroid in "Our photos".
+    couplePhoto(ph) {
+      if (!this.photo || !this.level) return;
+      // both of you turn to the camera and smile
+      this.players.forEach((p) => { if (p.local) { p.yaw = 0; p.model.play(p.who === 'mariem' ? 'love' : 'wave', 1.6); } });
+      setTimeout(async () => {
+        if (!this.level || !this.photo) return;
+        const cam = this.cams[0], keep = { p: cam.position.clone(), q: cam.quaternion.clone() };
+        // a clean picture: no tripod, no signs, no hearts over your heads
+        this.split = () => false;
+        ph.grp.visible = false; this.level.setHints(false); this.players.forEach((p) => { p.marker.visible = false; });
+        cam.clearViewOffset(); cam.position.set(ph.x, ph.y + 1.5, ph.z + 3.9); cam.lookAt(ph.x, ph.y + 1.05, ph.z);
+        try { await this.photo.snap((ph.caption || (this.chapter ? this.chapter.title : 'Us')) + ' · ' + (this.chapter ? this.chapter.year : '')); } catch (e) { console.warn(e); }
+        delete this.split; cam.position.copy(keep.p); cam.quaternion.copy(keep.q);
+        if (this.level) { ph.grp.visible = true; this.level.setHints(MM.save.settings.hints !== false); }
+        this.ui.toast('', 'Couple photo saved in Our photos 📷', true);
+      }, 350);
+    }
     photoFlash() {
       const f = document.getElementById('flash');
       if (f) { f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
@@ -582,8 +696,11 @@
       while (c.said < lines.length && c.t >= lines[c.said][0]) { const ln = lines[c.said++]; this.say(ln[1], ln[2], ln[3]); }
       if (c.tick) c.tick(c.t, dt, this);
       const cam = this.cams[0], a = c.ang + c.t * 0.12;
-      cam.position.set(c.center.x + Math.sin(a) * c.dist, c.center.y + c.h, c.center.z + Math.cos(a) * c.dist);
-      cam.lookAt(c.center.x, c.center.y + 1.1, c.center.z);
+      if (c.cam) { const v = c.cam(c.t); cam.position.fromArray(v[0]); cam.lookAt(v[1][0], v[1][1], v[1][2]); }
+      else {
+        cam.position.set(c.center.x + Math.sin(a) * c.dist, c.center.y + c.h, c.center.z + Math.cos(a) * c.dist);
+        cam.lookAt(c.center.x, c.center.y + 1.1, c.center.z);
+      }
       if (c.t >= c.dur) {
         this.cut = null;
         this.ui.cinemaText(null);
@@ -792,6 +909,7 @@
       N.on('connected', () => {
         if (this.reconnecting) { this.stopReconnect(); ui.toast('', 'Reconnected. Carry on!', true); }
         else this.syncLetters();
+        if (MM.save.settings.look) N.send({ t: 'look', look: MM.save.settings.look });
         if (N.role === 'guest') this.session({ role: 'guest', code: N.code, seat: N.seatId, char: this.myChar });
         // the host reloaded mid-chapter: take both of you back to it, from the last checkpoint
         if (N.role === 'host' && this.resuming && this.resuming.ch && !this.chapter) {
@@ -866,6 +984,7 @@
         case 'st': this.applyRemoteState(d); break;
         case 'ev': this.onNetEvent(d); break;
         case 'letter': if (d.l) this.receiveLetters([d.l]); break;
+        case 'look': this.receiveLook(d.look); break;
         default: break;
       }
     }
@@ -903,6 +1022,7 @@
         case 'dnote': if (D) D.takeNote(d.i, true); break;
         case 'dfail': if (D && !this.ownsCrates()) D.fail(); break;
         case 'photo': if (L) L.takePhoto(d.id, true); break;
+        case 'moment': this.homeMoment(d.k, true); break;
         case 'launch': { const me = this.player(this.myChar); if (me && me.local) me.receiveToss(d.fx, d.fz, d.vy); break; }
         case 'clove': if (this.concert) this.concert.loveIn(d.w, true); break;
         case 'rh': if (this.concert) this.concert.remote(d.w, d.j); break;
@@ -1029,7 +1149,7 @@
       const L = this.level;
       if (!L) return;
       L.frame(dt);
-      this.players.forEach((p) => p.visual(dt, L.solids, this.state !== 'cinematic' && this.state !== 'photo'));
+      this.players.forEach((p) => p.visual(dt, L.solids, this.state !== 'cinematic' && this.state !== 'photo' && !this.cut));
       if (this.kids.length) this.updateKids(dt);
       if (this.players.length) {
         const a = this.players[0].body, b = this.players[1].body;

@@ -188,24 +188,40 @@
     async shoot() {
       const g = this.game;
       g.render();
-      const src = g.renderer.domElement;
+      const url = await this.save(g.renderer.domElement, { filter: this.filter, frame: this.frame, caption: $('ph-caption').value.trim() });
+      g.photoFlash();
+      const id = MM.save.photos[0].id;
+      this.last = { url, id };
+      const t = $('ph-last'); t.hidden = false; t.querySelector('img').src = url;
+      return url;
+    }
+
+    // A couple photo from a photo spot in a chapter: straight into "Our photos" as a polaroid.
+    async snap(caption) {
+      const g = this.game;
+      g.render();
+      return this.save(g.renderer.domElement, { filter: 'warm', frame: 'polaroid', caption });
+    }
+
+    async save(src, opt) {
+      const g = this.game;
       const max = 1600, s = Math.min(1, max / Math.max(src.width, src.height));
       const w = Math.round(src.width * s), h = Math.round(src.height * s);
       const shot = document.createElement('canvas'); shot.width = w; shot.height = h;
       const sx = shot.getContext('2d'); sx.drawImage(src, 0, 0, w, h);
-      pixels(sx, w, h, this.filter);
+      pixels(sx, w, h, opt.filter);
       let out = shot;
-      if (this.frame !== 'none') {
-        const pad = Math.round(w * 0.04), bottom = this.frame === 'polaroid' ? Math.round(w * 0.16) : pad;
+      if (opt.frame !== 'none') {
+        const pad = Math.round(w * 0.04), bottom = opt.frame === 'polaroid' ? Math.round(w * 0.16) : pad;
         out = document.createElement('canvas'); out.width = w + pad * 2; out.height = h + pad + bottom;
         const x = out.getContext('2d');
-        x.fillStyle = this.frame === 'polaroid' ? '#fbf6f0' : '#111014'; x.fillRect(0, 0, out.width, out.height);
+        x.fillStyle = opt.frame === 'polaroid' ? '#fbf6f0' : '#111014'; x.fillRect(0, 0, out.width, out.height);
         x.drawImage(shot, pad, pad);
-        if (this.frame === 'film') {
+        if (opt.frame === 'film') {
           x.fillStyle = '#fbf6f0';
           for (let i = pad; i < out.width - pad; i += pad * 1.2) { x.fillRect(i, pad * 0.3, pad * 0.6, pad * 0.4); x.fillRect(i, out.height - pad * 0.7, pad * 0.6, pad * 0.4); }
         } else {
-          const cap = $('ph-caption').value.trim();
+          const cap = opt.caption || '';
           x.fillStyle = '#b8325f'; x.textAlign = 'center'; x.textBaseline = 'middle';
           x.font = Math.round(w * 0.05) + 'px "Yellowtail", cursive';
           x.fillText(cap || 'Mohamed & Mariem', out.width / 2, h + pad + bottom * 0.42);
@@ -221,9 +237,6 @@
       while (MM.save.photos.length > 80) { const old = MM.save.photos.pop(); MM.media.set('gallery:' + old.id, null); }
       MM.writeSave();
       MM.Extras.bump('photos');
-      g.photoFlash();
-      this.last = { url, id };
-      const t = $('ph-last'); t.hidden = false; t.querySelector('img').src = url;
       return url;
     }
     shareLast() { if (this.last) shareOrSave(this.last.url, 'mohamed-mariem-' + this.last.id + '.jpg'); }

@@ -7,7 +7,7 @@
   let current = null;
   const history = [];
 
-  const SCREENS = ['title', 'local', 'online', 'chapters', 'album', 'howto', 'settings', 'timeline', 'trophies', 'photos', 'letters', 'story', 'pause', 'complete', 'ending'];
+  const SCREENS = ['title', 'local', 'online', 'chapters', 'album', 'howto', 'settings', 'timeline', 'trophies', 'photos', 'letters', 'looks', 'quiz', 'story', 'pause', 'complete', 'ending'];
   const chLabel = (def) => (def.hub ? 'Our home' : 'Chapter ' + def.num);
   const chBg = (c) => c.card || 'linear-gradient(160deg,' + (MM.THEMES[c.theme] || MM.THEMES.school).skyTop + ',' + (MM.THEMES[c.theme] || MM.THEMES.school).accent + ')';
 
@@ -45,6 +45,7 @@
     $('join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') game.action('join'); e.stopPropagation(); });
     $('join-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); });
     $('lobby-ch').addEventListener('change', (e) => game.lobbyChapter(+e.target.value));
+    $('look-who').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; lookWho = b.dataset.w; renderLooks(); });
     $('st-ready').addEventListener('click', (e) => { const r = e.target.closest('.ready'); if (r) game.readyClick(r.dataset.who); });
     $('subtitle').addEventListener('click', () => U.skipSub());
     $('hud-mission').addEventListener('click', () => {
@@ -109,7 +110,7 @@
 
   /* ---------- screens ---------- */
   U.show = function (name, keepHistory) {
-    if (current && current !== name && keepHistory !== false && ['title', 'local', 'online', 'chapters', 'settings', 'howto', 'album', 'timeline', 'trophies', 'photos', 'letters'].indexOf(current) >= 0) history.push(current);
+    if (current && current !== name && keepHistory !== false && ['title', 'local', 'online', 'chapters', 'settings', 'howto', 'album', 'timeline', 'trophies', 'photos', 'letters', 'looks', 'quiz'].indexOf(current) >= 0) history.push(current);
     SCREENS.forEach((s) => { const el = $('scr-' + s); if (el) el.hidden = s !== name; });
     current = name;
     if (name === 'chapters') renderChapters();
@@ -118,6 +119,7 @@
     if (name === 'trophies') renderTrophies();
     if (name === 'photos') renderGallery();
     if (name === 'letters') renderLetters();
+    if (name === 'looks') renderLooks();
     if (name === 'title') renderTitle();
     if (name === 'settings') U.syncSettings();
     if (name === 'local') renderWho();
@@ -203,6 +205,10 @@
     if (today) { el.querySelector('b').textContent = today.icon + ' ' + today.title; el.querySelector('span').textContent = today.sub; }
     $('title-counters').innerHTML = MM.Extras.counters().map((t) => '<span></span>').join('');
     $('title-counters').querySelectorAll('span').forEach((s, i) => { s.textContent = MM.Extras.counters()[i]; });
+    // one of the memories you've found, a different one each day
+    const found = MM.MEMORIES.filter((mm) => MM.save.memories.indexOf(mm.id) >= 0), tm = $('title-mem');
+    tm.hidden = !found.length;
+    if (found.length) { const d = new Date(), k = (d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % found.length; tm.querySelector('b').textContent = found[k].title; tm.querySelector('span:last-child').textContent = found[k].text; }
     const unread = (MM.save.letters || []).filter((l) => !l.read).length;
     $('letters-link').textContent = unread ? 'Love letters 💌 ' + unread : 'Love letters';
     $('letters-link').classList.toggle('primary', !!unread);
@@ -233,6 +239,56 @@
       wrap.appendChild(card);
     }
   }
+
+  /* ---------- our looks ---------- */
+  let lookWho = 'mohamed';
+  function setLook(who, key, val) {
+    const all = (MM.save.settings.look = MM.save.settings.look || {});
+    const L = (all[who] = all[who] || {});
+    if (val === null) delete L[key]; else L[key] = val;
+    L.at = Date.now();
+    MM.writeSave();
+    if (game.net && game.net.connected) game.net.send({ t: 'look', look: all });
+    game.refreshMenuChars();
+    renderLooks();
+  }
+  function renderLooks() {
+    const X = MM.LOOKS, L = (MM.save.settings.look && MM.save.settings.look[lookWho]) || {};
+    game.lookWho = lookWho;
+    document.querySelectorAll('#look-who button').forEach((b) => b.classList.toggle('on', b.dataset.w === lookWho));
+    const base = MM.OUTFITS[lookWho][0];
+    const rows = [];
+    const sw = (label, key, list, cur) => rows.push({ label, key, swatch: list, cur });
+    const seg = (label, key, list, cur) => rows.push({ label, key, seg: list, cur });
+    sw('Skin', 'skin', X.skin, L.skin || base.skin);
+    if (lookWho === 'mohamed') {
+      seg('Hair', 'hairStyle', X.hairStyle, L.hairStyle || 'classic');
+      sw('Hair & beard colour', 'hair', X.hair, L.hair || base.hair);
+      seg('Beard', 'beardStyle', X.beardStyle, L.beardStyle || 'full');
+      sw('Eyes', 'iris', X.iris, L.iris || X.iris[0]);
+      seg('Glasses', 'glasses', X.glassesM, L.glasses || '');
+      seg('Build', 'build', X.build, L.build || 'big');
+    } else {
+      sw('Everyday hijab', 'hijab', X.hijab, L.hijab || base.hijab);
+      sw('Eyes', 'iris', X.iris, L.iris || X.iris[0]);
+      seg('Glasses', 'glasses', X.glassesF, L.glasses || '');
+    }
+    const wrap = $('look-rows'); wrap.innerHTML = '';
+    rows.forEach((r) => {
+      const row = document.createElement('div'); row.className = 'look-row';
+      const t = document.createElement('b'); t.textContent = r.label; row.appendChild(t);
+      const box = document.createElement('div'); box.className = r.swatch ? 'swatches' : 'seg';
+      (r.swatch || r.seg).forEach((v) => {
+        const b = document.createElement('button');
+        if (r.swatch) { b.style.background = v; b.setAttribute('aria-label', r.label + ' ' + v); b.classList.toggle('on', String(v).toLowerCase() === String(r.cur).toLowerCase()); b.addEventListener('click', () => setLook(lookWho, r.key, v)); }
+        else { b.textContent = v[1]; b.classList.toggle('on', v[0] === r.cur); b.addEventListener('click', () => setLook(lookWho, r.key, v[0])); }
+        box.appendChild(b);
+      });
+      row.appendChild(box); wrap.appendChild(row);
+    });
+  }
+  U.renderLooks = renderLooks;
+  U.lookReset = () => { if (MM.save.settings.look) { MM.save.settings.look[lookWho] = { at: Date.now() }; MM.writeSave(); if (game.net && game.net.connected) game.net.send({ t: 'look', look: MM.save.settings.look }); } game.refreshMenuChars(); renderLooks(); };
 
   /* ---------- love letters ---------- */
   function renderLetters() {

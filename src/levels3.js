@@ -8,7 +8,7 @@
   MM.CHAPTERS.push(
     /* =================================================================== 15 */
     {
-      id: 'summer', num: 15, year: 'Summer 2026', title: 'Sea & Sun', theme: 'sea', music: 'summer',
+      photoSpots: [[70, 0, 'Sahel, August 2026', 0.3]], id: 'summer', num: 15, year: 'Summer 2026', title: 'Sea & Sun', theme: 'sea', music: 'summer',
       outfit: { mohamed: 'summer', mariem: 'summer' },
       intro: ['13 July 2026: her birthday. A yacht, the open sea, just the two of them.', 'August: the North Coast. Sun, sand, and swimming together until sunset.'],
       mission: 'Light her 3 birthday candles and give her his gift. Then jump in, swim to Sahel and collect 6 seashells on the way.',
@@ -71,7 +71,7 @@
 
     /* =================================================================== 16 */
     {
-      id: 'anniversary', num: 16, year: '16 October 2026', title: 'One Year Engaged', theme: 'nile', music: 'anniversary',
+      photoSpots: [[50, 0, 'One year engaged', 4.3]], id: 'anniversary', num: 16, year: '16 October 2026', title: 'One Year Engaged', theme: 'nile', music: 'anniversary',
       outfit: { mohamed: 'suit', mariem: 'dress' },
       intro: ['16 October 2026. One year engaged.', 'He booked the fanciest hotel in Alexandria: a restaurant over the water, blue velvet chairs, warm lamps.', 'He kisses her hands. He opens every door for her. And tonight, there\'s one more surprise.'],
       mission: 'Light the 4 candles and find his gift before dinner. Mariem: no peeking.',
@@ -250,7 +250,7 @@
 
     /* =================================================================== 19 */
     {
-      id: 'med', num: 19, year: '12 December 2026', title: 'Dr. Mariem', theme: 'med', music: 'med',
+      photoSpots: [[71, 0.2, 'Dr. Mariem', 3]], id: 'med', num: 19, year: '12 December 2026', title: 'Dr. Mariem', theme: 'med', music: 'med',
       outfit: { mohamed: 'suit', mariem: 'coat' },
       intro: ['12 December 2026, 12 o\'clock. Faculty of Medicine, Alexandria.', 'Years of anatomy, night shifts, coffee and daily calls.', 'Today she graduates: the smartest doctor he has ever met. His pride. The best choice of his life.'],
       mission: 'Bring Mariem 5 coffees and get her to the graduation stage.',
@@ -319,7 +319,7 @@
 
     /* =================================================================== 20 */
     {
-      id: 'forever', num: 20, year: '2027 · and forever', title: 'Forever', theme: 'forever', music: 'forever',
+      photoSpots: [[31.5, 1.2, 'Paris, someday', 3], [59, 1.0, 'Our honeymoon', 3]], id: 'forever', num: 20, year: '2027 · and forever', title: 'Forever', theme: 'forever', music: 'forever',
       outfit: { mohamed: 'groom', mariem: 'bride' },
       intro: ['2027: the wedding. Everyone they love, in one place.', 'Then a honeymoon, just the two of them. Then America, with their home, their car and both families.', 'And one day: a little girl and a little boy.', 'The story continues. He will never leave Mariem.'],
       mission: 'Collect 4 passport stamps to cross the world together, then come home to your family.',
